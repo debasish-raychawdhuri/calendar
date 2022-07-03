@@ -1,7 +1,8 @@
-
+use std::fmt::Display;
+use colored::*;
 pub struct Calendar{
-    month:u8, //month starts from 0
-    year:u16,
+    pub month:u8, //month starts from 0
+    pub year:u16,
 }
 
 
@@ -24,6 +25,23 @@ impl DayOfWeek{
         }
     }
 }
+
+impl Display for DayOfWeek{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let day_str = match &self{
+            DayOfWeek::SUN=>"Sun",
+            DayOfWeek::MON=>"Mon",
+            DayOfWeek::TUE=>"Tue",
+            DayOfWeek::WED=>"Wed",
+            DayOfWeek::THU=>"Thu",
+            DayOfWeek::FRI=>"Fri",
+            DayOfWeek::SAT=>"Sat",
+        };
+        write!(f, "{}", day_str)
+    }
+}
+
+
 
 impl Calendar{
     pub fn get_year_base_day(&self) -> u32 {
@@ -58,6 +76,43 @@ impl Calendar{
 
     pub fn get_day_of_week(&self, day:u32) -> DayOfWeek{
         DayOfWeek::from_day_number(self.get_month_base_day()+day)
+    }
+
+    fn pad(v:u32) -> String {
+        if v<=9 {
+            format!("   {}",v)
+        }else if v<=99 {
+            format!("  {}",v)
+        }else{
+            format!(" {}",v)
+        }
+    }
+
+    pub fn print(&self) {
+        println!(" Sun Mon Tue Wed Thu Fri Sat");
+        let month_days :[u32;12]= [31,28,31,30,31,30,31,31,30,31,30,31];
+        let mut total_days = month_days[self.month as usize];
+        if self.is_leap_year() && self.month == 1 {
+            total_days+=1;
+        }
+        let month_base = self.get_month_base_day() % 7;
+        let mut j=0;
+        while j <= month_base{
+            print!("    ");
+            j+=1;
+        }
+
+        for i in 1..=total_days {
+            if j % 7 ==0 {
+                println!()
+            }
+            print!("{}", Self::pad(i));
+            
+            j+=1;
+            
+        }
+        println!();
+
     }
 }
 #[cfg(test)]
