@@ -155,7 +155,7 @@ impl Calendar{
         ];
         println!("       {}{}, {}", Self::spaces(5 - month_names[self.month as usize].len()/2),
             month_names[self.month as usize].yellow(), self.year.to_string().as_str().yellow());
-        println!("{} {}"," Sun".red().bold()," Mon Tue Wed Thu Fri Sat".green().bold());
+        println!("{} {}"," Sun".red().bold(),"Mon Tue Wed Thu Fri Sat".green().bold());
         let month_days :[u32;12]= [31,28,31,30,31,30,31,31,30,31,30,31];
         let mut total_days = month_days[self.month as usize];
         if self.is_leap_year() && self.month == 1 {
