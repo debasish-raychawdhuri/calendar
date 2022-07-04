@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, time::{SystemTime, UNIX_EPOCH}, str::FromStr};
 use colored::*;
 pub struct Calendar{
     pub month:u8, //month starts from 0
@@ -44,6 +44,47 @@ impl Display for DayOfWeek{
 
 
 impl Calendar{
+    pub fn from_time_millis(t:SystemTime) -> Self{
+        let seconds_from_epoch = t.duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let days_from_epoch = (seconds_from_epoch/(24*3600)) as u32;
+        let min_year = 1970 +  days_from_epoch/366;
+        let mut year = min_year as u16;
+        let mut cal = Calendar{
+            year,
+            month:0,
+        };
+        let epoch_cal = Calendar{
+            year:1970,
+            month:0,
+        };
+        let epoch_base = epoch_cal.get_month_base_day();
+        'year_loop: loop{
+            let mut month = 0;
+            loop {
+                cal = Calendar{
+                    year,
+                    month,
+                };
+                month +=1;
+                if month >= 12 {
+                    year+=1;
+                    month=0;
+                }
+                
+                let next_month_cal = Calendar{
+                    year,
+                    month,
+                };
+                if next_month_cal.get_month_base_day() > days_from_epoch+epoch_base {
+                    break 'year_loop;
+                }
+
+
+            }
+            
+        }
+        cal
+    }
     pub fn get_year_base_day(&self) -> u32 {
         let year = (self.year-1) as u32; // the point being that the current year's days are still not added.
         let base_days_for_year = year*365;
@@ -88,7 +129,32 @@ impl Calendar{
         }
     }
 
+    fn spaces(n:usize) -> String {
+        let mut s = String::from_str("").unwrap();
+        for _ in 0..n{
+            s+=" ";
+        }
+        s
+
+    }
+
     pub fn print(&self) {
+        let month_names = [
+            "January", 
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        ];
+        println!("       {}{}, {}", Self::spaces(5 - month_names[self.month as usize].len()/2),
+            month_names[self.month as usize].yellow(), self.year.to_string().as_str().yellow());
         println!("{} {}"," Sun".red().bold()," Mon Tue Wed Thu Fri Sat".green().bold());
         let month_days :[u32;12]= [31,28,31,30,31,30,31,31,30,31,30,31];
         let mut total_days = month_days[self.month as usize];

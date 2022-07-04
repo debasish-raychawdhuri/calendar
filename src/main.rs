@@ -2,9 +2,19 @@ mod calendar;
 use colored::*;
 use calendar::*;
 use std::{env, process::exit};
+use std::time::SystemTime;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
+
+    let now = SystemTime::now();
+
+    if args.len() == 1{
+        let cal = Calendar::from_time_millis(now);
+        cal.print();
+        exit(0);
+    }
+
     if args.len() != 3 {
         println!("Usage: calendar <year> <month>");
         exit(1);
