@@ -89,7 +89,7 @@ impl Calendar{
     }
 
     pub fn print(&self) {
-        println!("{} {}"," Sun".red()," Mon Tue Wed Thu Fri Sat".green());
+        println!("{} {}"," Sun".red().bold()," Mon Tue Wed Thu Fri Sat".green().bold());
         let month_days :[u32;12]= [31,28,31,30,31,30,31,31,30,31,30,31];
         let mut total_days = month_days[self.month as usize];
         if self.is_leap_year() && self.month == 1 {
@@ -115,7 +115,7 @@ impl Calendar{
             
             
             if j % 7 == 0 {
-                print!("{}", Self::pad(i).red());
+                print!("{}", Self::pad(i).magenta());
             }else{
                 print!("{}", Self::pad(i).cyan());
             }
