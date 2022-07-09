@@ -221,7 +221,7 @@ mod test {
             year: 2022,
             month: 6,
         };
-        assert_eq!(calendar.get_day_of_week(3), DayOfWeek::SUN);
+        assert_eq!(calendar.get_day_of_week(3), DayOfWeek::Sun);
     }
 
     #[test]
@@ -230,7 +230,7 @@ mod test {
             year: 2022,
             month: 5,
         };
-        assert_eq!(calendar.get_day_of_week(27), DayOfWeek::MON);
+        assert_eq!(calendar.get_day_of_week(27), DayOfWeek::Mon);
     }
 
     #[test]
@@ -239,7 +239,7 @@ mod test {
             year: 2020,
             month: 5,
         };
-        assert_eq!(calendar.get_day_of_week(9), DayOfWeek::TUE);
+        assert_eq!(calendar.get_day_of_week(9), DayOfWeek::Tue);
     }
 
     #[test]
@@ -248,6 +248,6 @@ mod test {
             year: 2020,
             month: 0,
         };
-        assert_eq!(calendar.get_day_of_week(15), DayOfWeek::WED);
+        assert_eq!(calendar.get_day_of_week(15), DayOfWeek::Wed);
     }
 }
