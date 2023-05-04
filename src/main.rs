@@ -33,12 +33,12 @@ fn main() {
         }
     };
 
-    if year < 1759 || month < 1 || month > 12 {
+    if year < 1759 || (1..12).contains(&month) {
         println!("Invalid range");
         exit(1);
     }
     let cal = Calendar {
-        year: year,
+        year,
         month: month - 1,
     };
     cal.print();

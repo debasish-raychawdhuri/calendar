@@ -56,7 +56,7 @@ impl Calendar {
         let days_from_epoch = (seconds_from_epoch / (24 * 3600)) as u32;
         let min_year = 1970 + days_from_epoch / 366;
         let mut year = min_year as u16;
-        let mut cal = Calendar { year, month: 0 };
+        let mut cal;
         let epoch_cal = Calendar {
             year: 1970,
             month: 0,
@@ -109,6 +109,7 @@ impl Calendar {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_day_of_week(&self, day: u32) -> DayOfWeek {
         DayOfWeek::from_day_number(self.get_month_base_day() + day)
     }
@@ -172,12 +173,10 @@ impl Calendar {
             }
         }
 
-        j = j % 7;
+        j %= 7;
         for i in 1..=total_days {
-            if j != 0 {
-                if j % 7 == 0 {
-                    println!()
-                }
+            if j != 0 && j % 7 == 0 {
+                println!()
             }
 
             if j % 7 == 0 {
