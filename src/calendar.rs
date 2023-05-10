@@ -131,8 +131,43 @@ impl Calendar {
         }
         s
     }
+    fn print_line(&self, line_no: u32) {
+        let month_days: [u32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        let mut total_days = month_days[self.month as usize];
 
-    pub fn print(&self) {
+        if self.is_leap_year() && self.month == 1 {
+            total_days += 1;
+        }
+        let month_base = (self.get_month_base_day() % 7) as i32;
+        let mut line_no = line_no;
+        if month_base == 6 {
+            line_no += 1;
+        }
+        let line_start = (line_no * 7) as i32 - month_base;
+        let mut j = 0;
+        for i in line_start..line_start + 7 {
+            if i > total_days as i32 {
+                break;
+            }
+            if i <= 0 {
+                print!("    ");
+            } else if j % 7 == 0 {
+                print!("{}", Self::pad(i as u32).magenta());
+            } else {
+                print!("{}", Self::pad(i as u32).cyan());
+            }
+            j += 1;
+        }
+    }
+
+    fn print_day_names(&self) {
+        println!(
+            "{} {}",
+            " Sun".red().bold(),
+            "Mon Tue Wed Thu Fri Sat".green().bold()
+        );
+    }
+    fn print_heading_month_year(&self) {
         let month_names = [
             "January",
             "February",
@@ -153,39 +188,13 @@ impl Calendar {
             month_names[self.month as usize].yellow(),
             self.year.to_string().as_str().yellow()
         );
-        println!(
-            "{} {}",
-            " Sun".red().bold(),
-            "Mon Tue Wed Thu Fri Sat".green().bold()
-        );
-        let month_days: [u32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-        let mut total_days = month_days[self.month as usize];
-        if self.is_leap_year() && self.month == 1 {
-            total_days += 1;
-        }
-        let month_base = self.get_month_base_day() % 7;
-        let mut j = 0;
-
-        if month_base != 6 {
-            while j <= month_base {
-                print!("    ");
-                j += 1;
-            }
-        }
-
-        j %= 7;
-        for i in 1..=total_days {
-            if j != 0 && j % 7 == 0 {
-                println!()
-            }
-
-            if j % 7 == 0 {
-                print!("{}", Self::pad(i).magenta());
-            } else {
-                print!("{}", Self::pad(i).cyan());
-            }
-
-            j += 1;
+    }
+    pub fn print(&self) {
+        self.print_heading_month_year();
+        self.print_day_names();
+        for k in 0..5 {
+            self.print_line(k);
+            println!();
         }
         println!();
     }
