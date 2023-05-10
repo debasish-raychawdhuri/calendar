@@ -39,12 +39,15 @@ fn main() {
                 exit(1);
             }
         };
-        if !(1..12).contains(&month) {
+        if !(1..=12).contains(&month) {
             println!("Invalid range");
             exit(1);
         }
 
-        let cal = Calendar { year, month };
+        let cal = Calendar {
+            year,
+            month: month - 1,
+        };
         cal.print();
     } else {
         Calendar::print_entire_year(year);
