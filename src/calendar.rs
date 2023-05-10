@@ -146,10 +146,7 @@ impl Calendar {
         let line_start = (line_no * 7) as i32 - month_base;
         let mut j = 0;
         for i in line_start..line_start + 7 {
-            if i > total_days as i32 {
-                break;
-            }
-            if i <= 0 {
+            if i > total_days as i32 || i <= 0 {
                 print!("    ");
             } else if j % 7 == 0 {
                 print!("{}", Self::pad(i as u32).magenta());
@@ -161,11 +158,85 @@ impl Calendar {
     }
 
     fn print_day_names(&self) {
-        println!(
+        print!(
             "{} {}",
             " Sun".red().bold(),
             "Mon Tue Wed Thu Fri Sat".green().bold()
         );
+    }
+    fn print_heading_month(&self) {
+        let month_names = [
+            "January",
+            "February",
+            "March",
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December",
+        ];
+
+        let name_length = month_names[self.month as usize].len();
+        let total_length = name_length;
+        let empty_space_left = (28 - total_length) / 2 + 1;
+        let empty_space_right = 28 - total_length - empty_space_left;
+        print!(
+            "{}{}{}",
+            Self::spaces(empty_space_left),
+            month_names[self.month as usize].yellow(),
+            Self::spaces(empty_space_right),
+        );
+    }
+
+    pub fn print_three_calendars(cal1: Calendar, cal2: Calendar, cal3: Calendar) {
+        cal1.print_heading_month();
+        print!("  ");
+        cal2.print_heading_month();
+        print!("  ");
+        cal3.print_heading_month();
+        println!();
+
+        cal1.print_day_names();
+        print!("  ");
+        cal2.print_day_names();
+        print!("  ");
+        cal3.print_day_names();
+        println!();
+
+        for i in 0..6 {
+            cal1.print_line(i);
+            print!("  ");
+            cal2.print_line(i);
+            print!("  ");
+            cal3.print_line(i);
+            println!();
+        }
+    }
+
+    pub fn print_entire_year(year: u16) {
+        let space_on_each_side = 42;
+        print!("{}", Self::spaces(space_on_each_side));
+        print!("{}", year.to_string().bold().bright_yellow());
+        print!("{}", Self::spaces(space_on_each_side));
+        println!();
+        println!();
+        for i in 0..4 {
+            let cal1 = Calendar { year, month: i * 3 };
+            let cal2 = Calendar {
+                year,
+                month: i * 3 + 1,
+            };
+            let cal3 = Calendar {
+                year,
+                month: i * 3 + 2,
+            };
+            Self::print_three_calendars(cal1, cal2, cal3);
+            println!();
+        }
     }
     fn print_heading_month_year(&self) {
         let month_names = [
@@ -182,16 +253,24 @@ impl Calendar {
             "November",
             "December",
         ];
-        println!(
-            "       {}{}, {}",
-            Self::spaces(5 - month_names[self.month as usize].len() / 2),
+
+        let name_length = month_names[self.month as usize].len();
+        let total_length = name_length + 2 + self.year.to_string().len();
+        let empty_space_left = (28 - total_length) / 2 + 1;
+        let empty_space_right = 28 - total_length - empty_space_left;
+        print!(
+            "{}{}, {}{}",
+            Self::spaces(empty_space_left),
             month_names[self.month as usize].yellow(),
-            self.year.to_string().as_str().yellow()
+            self.year.to_string().as_str().yellow(),
+            Self::spaces(empty_space_right),
         );
     }
     pub fn print(&self) {
         self.print_heading_month_year();
+        println!();
         self.print_day_names();
+        println!();
         for k in 0..5 {
             self.print_line(k);
             println!();
