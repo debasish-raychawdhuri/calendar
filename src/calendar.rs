@@ -144,8 +144,7 @@ impl Calendar {
             line_no += 1;
         }
         let line_start = (line_no * 7) as i32 - month_base;
-        let mut j = 0;
-        for i in line_start..line_start + 7 {
+        for (j, i) in (line_start..line_start + 7).enumerate() {
             if i > total_days as i32 || i <= 0 {
                 print!("    ");
             } else if j % 7 == 0 {
@@ -153,7 +152,6 @@ impl Calendar {
             } else {
                 print!("{}", Self::pad(i as u32).cyan());
             }
-            j += 1;
         }
     }
 
