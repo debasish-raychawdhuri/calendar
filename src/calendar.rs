@@ -80,6 +80,16 @@ impl Calendar {
         }
         cal
     }
+    pub fn get_today() -> (u32, u8, u16) {
+        let now = SystemTime::now();
+        let cal = Calendar::from_time_millis(now);
+        let seconds_from_epoch = now.duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let epoch_cal = Calendar::from_time_millis(UNIX_EPOCH);
+        let days_from_epoch = (seconds_from_epoch / (24 * 3600)) as u32;
+        let month_base_day = cal.get_month_base_day() - epoch_cal.get_year_base_day();
+        let today = days_from_epoch - month_base_day + 1;
+        (today, cal.month, cal.year)
+    }
     pub fn get_year_base_day(&self) -> u32 {
         let year = (self.year - 1) as u32; // the point being that the current year's days are still not added.
         let base_days_for_year = year * 365;
@@ -132,6 +142,8 @@ impl Calendar {
         s
     }
     fn print_line(&self, line_no: u32) {
+        let today = Self::get_today();
+
         let month_days: [u32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
         let mut total_days = month_days[self.month as usize];
 
@@ -148,7 +160,13 @@ impl Calendar {
             if i > total_days as i32 || i <= 0 {
                 print!("    ");
             } else if j % 7 == 0 {
-                print!("{}", Self::pad(i as u32).magenta());
+                if i == today.0 as i32 && self.month == today.1 && self.year == today.2 {
+                    print!("{}", Self::pad(i as u32).bold().white());
+                } else {
+                    print!("{}", Self::pad(i as u32).magenta());
+                }
+            } else if i == today.0 as i32 && self.month == today.1 && self.year == today.2 {
+                print!("{}", Self::pad(i as u32).bold().white());
             } else {
                 print!("{}", Self::pad(i as u32).cyan());
             }
