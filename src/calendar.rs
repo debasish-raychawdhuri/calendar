@@ -202,12 +202,7 @@ impl Calendar {
     }
 
     pub fn print_entire_year(year: u16) {
-        let space_on_each_side = 42;
-        print!("{}", Self::spaces(space_on_each_side));
-        print!("{}", year.to_string().bold().bright_yellow());
-        print!("{}", Self::spaces(space_on_each_side));
-        println!();
-        println!();
+        Self::print_year_heading(year);
         for i in 0..4 {
             let cal1 = Calendar { year, month: i * 3 };
             let cal2 = Calendar {
@@ -223,44 +218,47 @@ impl Calendar {
         }
     }
 
-    fn print_heading_month_year(&self) {
-        let month_names = [
-            "January",
-            "February",
-            "March",
-            "April",
-            "May",
-            "June",
-            "July",
-            "August",
-            "September",
-            "October",
-            "November",
-            "December",
-        ];
-
-        let name_length = month_names[self.month as usize].len();
-        let total_length = name_length + 2 + self.year.to_string().len();
-        let empty_space_left = (28 - total_length) / 2 + 1;
-        let empty_space_right = 28 - total_length - empty_space_left;
-        print!(
-            "{}{}, {}{}",
-            Self::spaces(empty_space_left),
-            month_names[self.month as usize].yellow(),
-            self.year.to_string().as_str().yellow(),
-            Self::spaces(empty_space_right),
-        );
-    }
-    pub fn print(&self) {
-        self.print_heading_month_year();
-        println!();
-        self.print_day_names();
-        println!();
-        for k in 0..5 {
-            self.print_line(k);
-            println!();
+    fn prev_month(&self) -> Calendar {
+        if self.month == 0 {
+            Calendar {
+                year: self.year - 1,
+                month: 11,
+            }
+        } else {
+            Calendar {
+                year: self.year,
+                month: self.month - 1,
+            }
         }
+    }
+
+    fn next_month(&self) -> Calendar {
+        if self.month == 11 {
+            Calendar {
+                year: self.year + 1,
+                month: 0,
+            }
+        } else {
+            Calendar {
+                year: self.year,
+                month: self.month + 1,
+            }
+        }
+    }
+    fn print_year_heading(year: u16) {
+        let space_on_each_side = 42;
+        print!("{}", Self::spaces(space_on_each_side));
+        print!("{}", year.to_string().bold().bright_yellow());
+        print!("{}", Self::spaces(space_on_each_side));
         println!();
+        println!();
+    }
+
+    pub fn print(self) {
+        let prev_month = self.prev_month();
+        let next_month = self.next_month();
+        Self::print_year_heading(self.year);
+        Self::print_three_calendars(prev_month, self, next_month);
     }
 }
 #[cfg(test)]
