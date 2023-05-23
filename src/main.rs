@@ -1,15 +1,20 @@
 mod calendar;
-use calendar::*;
-use std::time::SystemTime;
 use std::{env, process::exit};
+
+use calendar::Calendar;
+use chrono::{Datelike, Local};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    let now = SystemTime::now();
+    let now = Local::now();
+    let date = now.date_naive();
 
     if args.len() == 1 {
-        let cal = Calendar::from_time_millis(now);
+        let cal = Calendar {
+            year: date.year() as u16,
+            month: now.month0() as u8,
+        };
         cal.print();
         exit(0);
     }

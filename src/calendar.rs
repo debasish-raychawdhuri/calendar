@@ -1,6 +1,8 @@
+use chrono::{Datelike, Local};
 use colored::*;
 use std::{
     fmt::Display,
+    print,
     str::FromStr,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -81,13 +83,12 @@ impl Calendar {
         cal
     }
     pub fn get_today() -> (u32, u8, u16) {
-        let now = SystemTime::now();
-        let cal = Calendar::from_time_millis(now);
-        let seconds_from_epoch = now.duration_since(UNIX_EPOCH).unwrap().as_secs();
-        let epoch_cal = Calendar::from_time_millis(UNIX_EPOCH);
-        let days_from_epoch = (seconds_from_epoch / (24 * 3600)) as u32;
-        let month_base_day = cal.get_month_base_day() - epoch_cal.get_year_base_day();
-        let today = days_from_epoch - month_base_day + 1;
+        let now = Local::now().date_naive();
+        let cal = Calendar {
+            year: now.year() as u16,
+            month: now.month0() as u8,
+        };
+        let today = now.day() as u32;
         (today, cal.month, cal.year)
     }
     pub fn get_year_base_day(&self) -> u32 {
@@ -254,6 +255,7 @@ impl Calendar {
             println!();
         }
     }
+
     fn print_heading_month_year(&self) {
         let month_names = [
             "January",
