@@ -1,11 +1,7 @@
 use chrono::{Datelike, Local};
 use colored::*;
-use std::{
-    fmt::Display,
-    print,
-    str::FromStr,
-    time::{SystemTime, UNIX_EPOCH},
-};
+
+use std::{fmt::Display, print, str::FromStr};
 pub struct Calendar {
     pub month: u8, //month starts from 0
     pub year: u16,
@@ -53,42 +49,13 @@ impl Display for DayOfWeek {
 }
 
 impl Calendar {
-    pub fn from_time_millis(t: SystemTime) -> Self {
-        let seconds_from_epoch = t.duration_since(UNIX_EPOCH).unwrap().as_secs();
-        let days_from_epoch = (seconds_from_epoch / (24 * 3600)) as u32;
-        let min_year = 1970 + days_from_epoch / 366;
-        let mut year = min_year as u16;
-        let mut cal;
-        let epoch_cal = Calendar {
-            year: 1970,
-            month: 0,
-        };
-        let epoch_base = epoch_cal.get_month_base_day();
-        'year_loop: loop {
-            let mut month = 0;
-            loop {
-                cal = Calendar { year, month };
-                month += 1;
-                if month >= 12 {
-                    year += 1;
-                    month = 0;
-                }
-
-                let next_month_cal = Calendar { year, month };
-                if next_month_cal.get_month_base_day() > days_from_epoch + epoch_base {
-                    break 'year_loop;
-                }
-            }
-        }
-        cal
-    }
     pub fn get_today() -> (u32, u8, u16) {
         let now = Local::now().date_naive();
         let cal = Calendar {
             year: now.year() as u16,
             month: now.month0() as u8,
         };
-        let today = now.day() as u32;
+        let today = now.day();
         (today, cal.month, cal.year)
     }
     pub fn get_year_base_day(&self) -> u32 {
