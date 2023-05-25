@@ -31,7 +31,7 @@ fn main() {
             exit(1);
         }
     };
-    if year < 1759 {
+    if year < 1583 {
         println!("Invalid range");
         exit(1);
     }
