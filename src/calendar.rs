@@ -94,11 +94,11 @@ impl Calendar {
 
     fn pad(v: u32) -> String {
         if v <= 9 {
-            format!("   {}", v)
+            format!("   ")
         } else if v <= 99 {
-            format!("  {}", v)
+            format!("  ")
         } else {
-            format!(" {}", v)
+            format!(" ")
         }
     }
 
@@ -129,14 +129,22 @@ impl Calendar {
                 print!("    ");
             } else if j % 7 == 0 {
                 if i == today.0 as i32 && self.month == today.1 && self.year == today.2 {
-                    print!("{}", Self::pad(i as u32).bold().white());
+                    print!(
+                        "{}{}",
+                        Self::pad(i as u32),
+                        format!("{}", i).bold().black().on_magenta()
+                    );
                 } else {
-                    print!("{}", Self::pad(i as u32).magenta());
+                    print!("{}{}", Self::pad(i as u32), format!("{}", i).magenta());
                 }
             } else if i == today.0 as i32 && self.month == today.1 && self.year == today.2 {
-                print!("{}", Self::pad(i as u32).bold().white());
+                print!(
+                    "{}{}",
+                    Self::pad(i as u32),
+                    format!("{}", i).bold().black().on_blue()
+                );
             } else {
-                print!("{}", Self::pad(i as u32).cyan());
+                print!("{}{}", Self::pad(i as u32), format!("{}", i).cyan());
             }
         }
     }
