@@ -141,7 +141,7 @@ impl Calendar {
                 print!(
                     "{}{}",
                     Self::pad(i as u32),
-                    format!("{}", i).bold().black().on_blue()
+                    format!("{}", i).bold().black().on_cyan()
                 );
             } else {
                 print!("{}{}", Self::pad(i as u32), format!("{}", i).cyan());
