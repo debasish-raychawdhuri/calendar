@@ -49,6 +49,10 @@ impl Display for DayOfWeek {
 }
 
 impl Calendar {
+    /// Gets today's date as a tuple `(day, month, year)`.
+    ///
+    /// # Returns
+    /// * A tuple containing the current day, month (0-based), and year.
     pub fn get_today() -> (u32, u8, u16) {
         let now = Local::now().date_naive();
         let cal = Calendar {
@@ -58,6 +62,11 @@ impl Calendar {
         let today = now.day();
         (today, cal.month, cal.year)
     }
+
+    /// Calculates the base day of the year (number of days since year 0).
+    ///
+    /// # Returns
+    /// * The base day of the year as a `u32`.
     pub fn get_year_base_day(&self) -> u32 {
         let year = (self.year - 1) as u32; // the point being that the current year's days are still not added.
         let base_days_for_year = year * 365;
@@ -67,6 +76,10 @@ impl Calendar {
         base_days_for_year + leap_days_for_year - leap_misses_for_century + leap_hits_for_century
     }
 
+    /// Determines if the current year is a leap year.
+    ///
+    /// # Returns
+    /// * `true` if the year is a leap year, otherwise `false`.
     pub fn is_leap_year(&self) -> bool {
         if self.year % 100 == 0 {
             self.year % 400 == 0
@@ -75,6 +88,10 @@ impl Calendar {
         }
     }
 
+    /// Calculates the base day of the current month (number of days since year 0).
+    ///
+    /// # Returns
+    /// * The base day of the month as a `u32`.
     pub fn get_month_base_day(&self) -> u32 {
         let year_first_day = self.get_year_base_day();
         let month_days: [u32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
@@ -87,7 +104,13 @@ impl Calendar {
         }
     }
 
-    #[allow(dead_code)]
+    /// Gets the day of the week for a given day of the month.
+    ///
+    /// # Arguments
+    /// * `day` - The day of the month.
+    ///
+    /// # Returns
+    /// * The `DayOfWeek` corresponding to the given day.
     pub fn get_day_of_week(&self, day: u32) -> DayOfWeek {
         DayOfWeek::from_day_number(self.get_month_base_day() + day)
     }
@@ -236,6 +259,12 @@ impl Calendar {
         );
     }
 
+    /// Prints three months side by side in the calendar.
+    ///
+    /// # Arguments
+    /// * `cal1` - The first calendar to print.
+    /// * `cal2` - The second calendar to print.
+    /// * `cal3` - The third calendar to print.
     pub fn print_three_calendars(cal1: Calendar, cal2: Calendar, cal3: Calendar) {
         cal1.print_heading_month();
         print!("  ");
@@ -261,6 +290,10 @@ impl Calendar {
         }
     }
 
+    /// Prints a single month in the calendar.
+    ///
+    /// # Arguments
+    /// * `cal` - The calendar to print.
     pub fn print_one_month(cal: Calendar) {
         cal.print_heading_month();
         println!();
@@ -272,6 +305,10 @@ impl Calendar {
         }
     }
 
+    /// Prints the entire year as a calendar.
+    ///
+    /// # Arguments
+    /// * `year` - The year to print.
     pub fn print_entire_year(year: u16) {
         Self::print_year_heading(year);
         for i in 0..4 {
@@ -325,6 +362,7 @@ impl Calendar {
         println!();
     }
 
+    /// Prints the calendar for the current month, along with the previous and next months.
     pub fn print(self) {
         let prev_month = self.prev_month();
         let next_month = self.next_month();
