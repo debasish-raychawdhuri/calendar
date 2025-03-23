@@ -209,6 +209,17 @@ impl Calendar {
         }
     }
 
+    pub fn print_one_month(cal: Calendar) {
+        cal.print_heading_month();
+        println!();
+        cal.print_day_names();
+        println!();
+        for i in 0..6 {
+            cal.print_line(i);
+            println!();
+        }
+    }
+
     pub fn print_entire_year(year: u16) {
         Self::print_year_heading(year);
         for i in 0..4 {

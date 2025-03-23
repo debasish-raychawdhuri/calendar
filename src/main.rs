@@ -18,6 +18,10 @@ struct Args {
     /// Month to display (1-12)
     #[arg(value_name = "MONTH")]
     second_arg: Option<String>,
+
+    /// Show only one month instead of the default three
+    #[arg(short = 's', long = "single-month")]
+    single_month: bool,
 }
 
 fn main() {
@@ -29,7 +33,10 @@ fn main() {
     let has_first_arg = args.first_arg.is_some();
     let (year, month) = if let Some(first_arg) = args.first_arg {
         match first_arg.parse::<u16>() {
-            Ok(num) if num > 12 => (Some(num), args.second_arg.clone().and_then(|m| m.parse().ok())),
+            Ok(num) if num > 12 => (
+                Some(num),
+                args.second_arg.clone().and_then(|m| m.parse().ok()),
+            ),
             Ok(num) => (None, Some(num as u8)),
             Err(_) => {
                 eprintln!("Error: Invalid number format");
@@ -40,6 +47,7 @@ fn main() {
         (None, None)
     };
 
+    let single = args.single_month;
     let year = year.unwrap_or(date.year() as u16);
 
     if year < 1583 {
@@ -47,7 +55,8 @@ fn main() {
         std::process::exit(1);
     }
 
-    if args.show_year || (has_first_arg && args.second_arg.is_none() && year != date.year() as u16) {
+    if args.show_year || (has_first_arg && args.second_arg.is_none() && year != date.year() as u16)
+    {
         Calendar::print_entire_year(year);
     } else if let Some(month) = month {
         if !(1..=12).contains(&month) {
@@ -59,12 +68,20 @@ fn main() {
             year,
             month: month - 1,
         };
-        cal.print();
+        if single {
+            Calendar::print_one_month(cal);
+        } else {
+            cal.print();
+        }
     } else {
         let cal = Calendar {
             year,
             month: now.month0() as u8,
         };
-        cal.print();
+        if single {
+            Calendar::print_one_month(cal);
+        } else {
+            cal.print();
+        }
     }
 }
