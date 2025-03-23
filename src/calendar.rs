@@ -109,43 +109,95 @@ impl Calendar {
         }
         s
     }
-    fn print_line(&self, line_no: u32) {
-        let today = Self::get_today();
 
-        let month_days: [u32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-        let mut total_days = month_days[self.month as usize];
-
-        if self.is_leap_year() && self.month == 1 {
-            total_days += 1;
-        }
+    /// Calculates the starting day of a given line in the calendar.
+    ///
+    /// # Arguments
+    /// * `line_no` - The line number (0-based) for which the starting day is calculated.
+    ///
+    /// # Returns
+    /// * The starting day of the line as an `i32`.
+    fn calculate_line_start(&self, line_no: u32) -> i32 {
         let month_base = (self.get_month_base_day() % 7) as i32;
         let mut line_no = line_no;
         if month_base == 6 {
             line_no += 1;
         }
-        let line_start = (line_no * 7) as i32 - month_base;
-        for (j, i) in (line_start..line_start + 7).enumerate() {
-            if i > total_days as i32 || i <= 0 {
-                print!("    ");
-            } else if j % 7 == 0 {
-                if i == today.0 as i32 && self.month == today.1 && self.year == today.2 {
-                    print!(
-                        "{}{}",
-                        Self::pad(i as u32),
-                        format!("{}", i).bold().black().on_magenta()
-                    );
-                } else {
-                    print!("{}{}", Self::pad(i as u32), format!("{}", i).magenta());
-                }
-            } else if i == today.0 as i32 && self.month == today.1 && self.year == today.2 {
-                print!(
-                    "{}{}",
-                    Self::pad(i as u32),
-                    format!("{}", i).bold().black().on_cyan()
-                );
-            } else {
-                print!("{}{}", Self::pad(i as u32), format!("{}", i).cyan());
-            }
+        (line_no * 7) as i32 - month_base
+    }
+
+    /// Prints a single day in the calendar.
+    ///
+    /// # Arguments
+    /// * `day` - The day of the month to print.
+    /// * `today` - A tuple representing today's date `(day, month, year)`.
+    /// * `j` - The position of the day in the week (0-based).
+    fn print_day(&self, day: i32, today: (u32, u8, u16), j: usize) {
+        if day <= 0 || day > self.get_total_days_in_month() as i32 {
+            print!("    ");
+        } else if j % 7 == 0 {
+            self.print_week_start_day(day, today);
+        } else {
+            self.print_regular_day(day, today);
+        }
+    }
+
+    /// Prints a day that starts a week (e.g., Sunday).
+    ///
+    /// # Arguments
+    /// * `day` - The day of the month to print.
+    /// * `today` - A tuple representing today's date `(day, month, year)`.
+    fn print_week_start_day(&self, day: i32, today: (u32, u8, u16)) {
+        if day == today.0 as i32 && self.month == today.1 && self.year == today.2 {
+            print!(
+                "{}{}",
+                Self::pad(day as u32),
+                format!("{}", day).bold().black().on_magenta()
+            );
+        } else {
+            print!("{}{}", Self::pad(day as u32), format!("{}", day).magenta());
+        }
+    }
+
+    /// Prints a regular day (not the start of a week).
+    ///
+    /// # Arguments
+    /// * `day` - The day of the month to print.
+    /// * `today` - A tuple representing today's date `(day, month, year)`.
+    fn print_regular_day(&self, day: i32, today: (u32, u8, u16)) {
+        if day == today.0 as i32 && self.month == today.1 && self.year == today.2 {
+            print!(
+                "{}{}",
+                Self::pad(day as u32),
+                format!("{}", day).bold().black().on_cyan()
+            );
+        } else {
+            print!("{}{}", Self::pad(day as u32), format!("{}", day).cyan());
+        }
+    }
+
+    /// Calculates the total number of days in the current month.
+    ///
+    /// # Returns
+    /// * The total number of days in the month as a `u32`.
+    fn get_total_days_in_month(&self) -> u32 {
+        let month_days: [u32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        let mut total_days = month_days[self.month as usize];
+        if self.is_leap_year() && self.month == 1 {
+            total_days += 1;
+        }
+        total_days
+    }
+
+    /// Prints a single line of the calendar.
+    ///
+    /// # Arguments
+    /// * `line_no` - The line number (0-based) to print.
+    fn print_line(&self, line_no: u32) {
+        let today = Self::get_today();
+        let line_start = self.calculate_line_start(line_no);
+        for (j, day) in (line_start..line_start + 7).enumerate() {
+            self.print_day(day, today, j);
         }
     }
 
