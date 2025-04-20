@@ -1,12 +1,14 @@
 use chrono::{Datelike, Local};
 use colored::*;
-
 use std::{fmt::Display, print, str::FromStr};
+
+/// Represents a calendar for a specific year and month
 pub struct Calendar {
-    pub month: u8, //month starts from 0
-    pub year: u16,
+    pub month: u8,  // Month (0-based, 0-11)
+    pub year: u16,  // Year (1583 or later)
 }
 
+/// Represents days of the week
 #[derive(Debug, PartialEq)]
 pub enum DayOfWeek {
     Sun,
@@ -19,6 +21,13 @@ pub enum DayOfWeek {
 }
 
 impl DayOfWeek {
+    /// Converts a day number to its corresponding day of the week
+    /// 
+    /// # Arguments
+    /// * `day` - The day number (any integer)
+    /// 
+    /// # Returns
+    /// * The corresponding `DayOfWeek`
     fn from_day_number(day: u32) -> Self {
         match day % 7 {
             0 => DayOfWeek::Sun,
@@ -33,6 +42,7 @@ impl DayOfWeek {
     }
 }
 
+/// Implements string representation for DayOfWeek
 impl Display for DayOfWeek {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let day_str = match &self {
@@ -63,12 +73,13 @@ impl Calendar {
         (today, cal.month, cal.year)
     }
 
-    /// Calculates the base day of the year (number of days since year 0).
-    ///
+    /// Calculates the first day of the year relative to year 0
+    /// This is used as a base for calculating specific dates
+    /// 
     /// # Returns
-    /// * The base day of the year as a `u32`.
+    /// * The number of days from year 0 to the start of the current year
     pub fn get_year_base_day(&self) -> u32 {
-        let year = (self.year - 1) as u32; // the point being that the current year's days are still not added.
+        let year = (self.year - 1) as u32;
         let base_days_for_year = year * 365;
         let leap_days_for_year = year / 4;
         let leap_misses_for_century = year / 100;
@@ -76,10 +87,10 @@ impl Calendar {
         base_days_for_year + leap_days_for_year - leap_misses_for_century + leap_hits_for_century
     }
 
-    /// Determines if the current year is a leap year.
-    ///
-    /// # Returns
-    /// * `true` if the year is a leap year, otherwise `false`.
+    /// Checks if the current year is a leap year
+    /// Uses the Gregorian calendar rules:
+    /// - Years divisible by 4 are leap years
+    /// - Century years must be divisible by 400 to be leap years
     pub fn is_leap_year(&self) -> bool {
         if self.year % 100 == 0 {
             self.year % 400 == 0
@@ -115,6 +126,13 @@ impl Calendar {
         DayOfWeek::from_day_number(self.get_month_base_day() + day)
     }
 
+    /// Helper function to add padding spaces based on number width
+    /// 
+    /// # Arguments
+    /// * `v` - The number to pad
+    /// 
+    /// # Returns
+    /// * A string containing the appropriate number of spaces
     fn pad(v: u32) -> String {
         if v <= 9 {
             format!("   ")
@@ -125,6 +143,13 @@ impl Calendar {
         }
     }
 
+    /// Creates a string with a specified number of spaces
+    /// 
+    /// # Arguments
+    /// * `n` - The number of spaces to create
+    /// 
+    /// # Returns
+    /// * A string containing n spaces
     fn spaces(n: usize) -> String {
         let mut s = String::from_str("").unwrap();
         for _ in 0..n {
@@ -212,10 +237,10 @@ impl Calendar {
         total_days
     }
 
-    /// Prints a single line of the calendar.
-    ///
+    /// Prints a calendar row starting from the given line number
+    /// 
     /// # Arguments
-    /// * `line_no` - The line number (0-based) to print.
+    /// * `line_no` - The row number (0-5) to print
     fn print_line(&self, line_no: u32) {
         let today = Self::get_today();
         let line_start = self.calculate_line_start(line_no);
@@ -224,6 +249,8 @@ impl Calendar {
         }
     }
 
+    /// Prints the day names header (Sun Mon Tue etc.)
+    /// Uses different colors for Sunday and other days
     fn print_day_names(&self) {
         print!(
             "{} {}",
@@ -231,6 +258,7 @@ impl Calendar {
             "Mon Tue Wed Thu Fri Sat".green().bold()
         );
     }
+
     fn print_heading_month(&self) {
         let month_names = [
             "January",
@@ -326,6 +354,8 @@ impl Calendar {
         }
     }
 
+    /// Gets the calendar for the previous month
+    /// Handles year boundaries (e.g., January to previous December)
     fn prev_month(&self) -> Calendar {
         if self.month == 0 {
             Calendar {
@@ -340,6 +370,8 @@ impl Calendar {
         }
     }
 
+    /// Gets the calendar for the next month
+    /// Handles year boundaries (e.g., December to next January)
     fn next_month(&self) -> Calendar {
         if self.month == 11 {
             Calendar {
@@ -353,6 +385,7 @@ impl Calendar {
             }
         }
     }
+
     fn print_year_heading(year: u16) {
         let space_on_each_side = 42;
         print!("{}", Self::spaces(space_on_each_side));
@@ -370,6 +403,7 @@ impl Calendar {
         Self::print_three_calendars(prev_month, self, next_month);
     }
 }
+
 #[cfg(test)]
 mod test {
     use super::*;

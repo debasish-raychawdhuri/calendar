@@ -3,6 +3,7 @@ use calendar::Calendar;
 use chrono::{Datelike, Local};
 use clap::Parser;
 
+/// Command line arguments for the calendar application
 #[derive(Parser)]
 #[command(name = "calendar")]
 #[command(about = "Display a calendar for a given year/month")]
@@ -11,11 +12,11 @@ struct Args {
     #[arg(short = 'y', long = "year")]
     show_year: bool,
 
-    /// Year or month to display
+    /// Year or month to display (can be either a year > 12 or a month 1-12)
     #[arg(value_name = "YEAR_OR_MONTH")]
     first_arg: Option<String>,
 
-    /// Month to display (1-12)
+    /// Month to display (1-12) when first argument is a year
     #[arg(value_name = "MONTH")]
     second_arg: Option<String>,
 
@@ -24,6 +25,32 @@ struct Args {
     single_month: bool,
 }
 
+/// Entry point of the calendar application
+/// 
+/// # Description
+/// Parses command line arguments and displays calendar(s) based on the provided options:
+/// - Can show an entire year
+/// - Can show a single month
+/// - Can show three consecutive months (default)
+/// - Supports years from 1583 onwards
+/// 
+/// # Arguments
+/// Command line arguments are parsed using the `Args` struct
+/// 
+/// # Examples
+/// ```bash
+/// # Show current month and adjacent months
+/// calendar
+/// 
+/// # Show entire year
+/// calendar -y 2024
+/// 
+/// # Show specific month
+/// calendar 2024 12
+/// 
+/// # Show single month instead of three
+/// calendar -s
+/// ```
 fn main() {
     let args = Args::parse();
     let now = Local::now();
