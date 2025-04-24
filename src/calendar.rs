@@ -4,8 +4,8 @@ use std::{fmt::Display, print, str::FromStr};
 
 /// Represents a calendar for a specific year and month
 pub struct Calendar {
-    pub month: u8,  // Month (0-based, 0-11)
-    pub year: u16,  // Year (1583 or later)
+    pub month: u8, // Month (0-based, 0-11)
+    pub year: u16, // Year (1583 or later)
 }
 
 /// Represents days of the week
@@ -22,10 +22,10 @@ pub enum DayOfWeek {
 
 impl DayOfWeek {
     /// Converts a day number to its corresponding day of the week
-    /// 
+    ///
     /// # Arguments
     /// * `day` - The day number (any integer)
-    /// 
+    ///
     /// # Returns
     /// * The corresponding `DayOfWeek`
     fn from_day_number(day: u32) -> Self {
@@ -75,7 +75,7 @@ impl Calendar {
 
     /// Calculates the first day of the year relative to year 0
     /// This is used as a base for calculating specific dates
-    /// 
+    ///
     /// # Returns
     /// * The number of days from year 0 to the start of the current year
     pub fn get_year_base_day(&self) -> u32 {
@@ -127,10 +127,10 @@ impl Calendar {
     }
 
     /// Helper function to add padding spaces based on number width
-    /// 
+    ///
     /// # Arguments
     /// * `v` - The number to pad
-    /// 
+    ///
     /// # Returns
     /// * A string containing the appropriate number of spaces
     fn pad(v: u32) -> String {
@@ -144,10 +144,10 @@ impl Calendar {
     }
 
     /// Creates a string with a specified number of spaces
-    /// 
+    ///
     /// # Arguments
     /// * `n` - The number of spaces to create
-    /// 
+    ///
     /// # Returns
     /// * A string containing n spaces
     fn spaces(n: usize) -> String {
@@ -238,7 +238,7 @@ impl Calendar {
     }
 
     /// Prints a calendar row starting from the given line number
-    /// 
+    ///
     /// # Arguments
     /// * `line_no` - The row number (0-5) to print
     fn print_line(&self, line_no: u32) {
@@ -259,7 +259,8 @@ impl Calendar {
         );
     }
 
-    fn print_heading_month(&self) {
+    /// Returns month name as a string
+    fn get_month_name(&self) -> &'static str {
         let month_names = [
             "January",
             "February",
@@ -274,15 +275,18 @@ impl Calendar {
             "November",
             "December",
         ];
+        month_names[self.month as usize]
+    }
 
-        let name_length = month_names[self.month as usize].len();
+    fn print_heading_month(&self) {
+        let name_length = self.get_month_name().len();
         let total_length = name_length;
         let empty_space_left = (28 - total_length) / 2 + 1;
         let empty_space_right = 28 - total_length - empty_space_left;
         print!(
             "{}{}{}",
             Self::spaces(empty_space_left),
-            month_names[self.month as usize].yellow(),
+            self.get_month_name().yellow(),
             Self::spaces(empty_space_right),
         );
     }
@@ -294,6 +298,7 @@ impl Calendar {
     /// * `cal2` - The second calendar to print.
     /// * `cal3` - The third calendar to print.
     pub fn print_three_calendars(cal1: Calendar, cal2: Calendar, cal3: Calendar) {
+        // Print month titles
         cal1.print_heading_month();
         print!("  ");
         cal2.print_heading_month();
@@ -301,21 +306,43 @@ impl Calendar {
         cal3.print_heading_month();
         println!();
 
-        cal1.print_day_names();
+        // Print top borders
+        print!("┌──────────────────────────────┐");
         print!("  ");
-        cal2.print_day_names();
+        print!("┌──────────────────────────────┐");
         print!("  ");
-        cal3.print_day_names();
+        print!("┌──────────────────────────────┐");
         println!();
 
+        // Print day names
+        print!("│ ");
+        cal1.print_day_names();
+        print!(" │  │ ");
+        cal2.print_day_names();
+        print!(" │  │ ");
+        cal3.print_day_names();
+        print!(" │");
+        println!();
+
+        // Print calendar lines
         for i in 0..6 {
+            print!("│ ");
             cal1.print_line(i);
-            print!("  ");
+            print!(" │  │ ");
             cal2.print_line(i);
-            print!("  ");
+            print!(" │  │ ");
             cal3.print_line(i);
+            print!(" │");
             println!();
         }
+
+        // Print bottom borders
+        print!("└──────────────────────────────┘");
+        print!("  ");
+        print!("└──────────────────────────────┘");
+        print!("  ");
+        print!("└──────────────────────────────┘");
+        println!();
     }
 
     /// Prints a single month in the calendar.
@@ -323,14 +350,29 @@ impl Calendar {
     /// # Arguments
     /// * `cal` - The calendar to print.
     pub fn print_one_month(cal: Calendar) {
+        // Print month title
         cal.print_heading_month();
         println!();
+
+        // Print top border
+        println!("┌────────────────────────┐");
+
+        // Print day names
+        print!("│ ");
         cal.print_day_names();
+        print!(" │");
         println!();
+
+        // Print calendar lines
         for i in 0..6 {
+            print!("│ ");
             cal.print_line(i);
+            print!(" │");
             println!();
         }
+
+        // Print bottom border
+        println!("└────────────────────────┘");
     }
 
     /// Prints the entire year as a calendar.
@@ -464,3 +506,4 @@ mod test {
         assert_eq!(calendar.get_day_of_week(15), DayOfWeek::Wed);
     }
 }
+
