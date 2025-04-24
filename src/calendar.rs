@@ -429,7 +429,7 @@ impl Calendar {
     }
 
     fn print_year_heading(year: u16) {
-        let space_on_each_side = 42;
+        let space_on_each_side = 48;
         print!("{}", Self::spaces(space_on_each_side));
         print!("{}", year.to_string().bold().bright_yellow());
         print!("{}", Self::spaces(space_on_each_side));
