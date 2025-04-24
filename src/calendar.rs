@@ -280,9 +280,9 @@ impl Calendar {
 
     fn print_heading_month(&self) {
         let name_length = self.get_month_name().len();
-        let total_length = name_length;
-        let empty_space_left = (28 - total_length) / 2 + 1;
-        let empty_space_right = 28 - total_length - empty_space_left;
+        let box_width = 32; // Width of the box (including borders)
+        let empty_space_left = (box_width - name_length) / 2;
+        let empty_space_right = box_width - name_length - empty_space_left;
         print!(
             "{}{}{}",
             Self::spaces(empty_space_left),
