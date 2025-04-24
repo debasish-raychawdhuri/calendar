@@ -355,7 +355,7 @@ impl Calendar {
         println!();
 
         // Print top border
-        println!("┌────────────────────────┐");
+        println!("┌──────────────────────────────┐");
 
         // Print day names
         print!("│ ");
@@ -372,7 +372,7 @@ impl Calendar {
         }
 
         // Print bottom border
-        println!("└────────────────────────┘");
+        println!("└──────────────────────────────┘");
     }
 
     /// Prints the entire year as a calendar.
@@ -506,4 +506,3 @@ mod test {
         assert_eq!(calendar.get_day_of_week(15), DayOfWeek::Wed);
     }
 }
-
