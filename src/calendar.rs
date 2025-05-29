@@ -228,7 +228,7 @@ impl Calendar {
     ///
     /// # Returns
     /// * The total number of days in the month as a `u32`.
-    fn get_total_days_in_month(&self) -> u32 {
+    pub fn get_total_days_in_month(&self) -> u32 {
         let month_days: [u32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
         let mut total_days = month_days[self.month as usize];
         if self.is_leap_year() && self.month == 1 {
@@ -260,7 +260,7 @@ impl Calendar {
     }
 
     /// Returns month name as a string
-    fn get_month_name(&self) -> &'static str {
+    pub fn get_month_name(&self) -> &'static str {
         let month_names = [
             "January",
             "February",
@@ -398,7 +398,7 @@ impl Calendar {
 
     /// Gets the calendar for the previous month
     /// Handles year boundaries (e.g., January to previous December)
-    fn prev_month(&self) -> Calendar {
+    pub fn prev_month(&self) -> Calendar {
         if self.month == 0 {
             Calendar {
                 year: self.year - 1,
@@ -414,7 +414,7 @@ impl Calendar {
 
     /// Gets the calendar for the next month
     /// Handles year boundaries (e.g., December to next January)
-    fn next_month(&self) -> Calendar {
+    pub fn next_month(&self) -> Calendar {
         if self.month == 11 {
             Calendar {
                 year: self.year + 1,
@@ -428,7 +428,7 @@ impl Calendar {
         }
     }
 
-    fn print_year_heading(year: u16) {
+    pub fn print_year_heading(year: u16) {
         let space_on_each_side = 48;
         print!("{}", Self::spaces(space_on_each_side));
         print!("{}", year.to_string().bold().bright_yellow());
@@ -443,6 +443,40 @@ impl Calendar {
         let next_month = self.next_month();
         Self::print_year_heading(self.year);
         Self::print_three_calendars(prev_month, self, next_month);
+    }
+    
+    /// Prints just a single month calendar
+    pub fn print_one_month(cal: Calendar) {
+        Self::print_year_heading(cal.year);
+        
+        // Print top border
+        println!("┌──────────────────────────────┐");
+        
+        // Print month name
+        print!("│");
+        let month_name = cal.get_month_name();
+        let padding = (26 - month_name.len()) / 2;
+        print!("{}", Self::spaces(padding));
+        print!("{}", month_name);
+        print!("{}", Self::spaces(26 - month_name.len() - padding));
+        println!("│");
+        
+        // Print day names
+        print!("│ ");
+        cal.print_day_names();
+        print!(" │");
+        println!();
+        
+        // Print calendar lines
+        for i in 0..6 {
+            print!("│ ");
+            cal.print_line(i);
+            print!(" │");
+            println!();
+        }
+        
+        // Print bottom border
+        println!("└──────────────────────────────┘");
     }
 }
 

@@ -1,7 +1,12 @@
 mod calendar;
+mod db;
+mod ui;
+
 use calendar::Calendar;
 use chrono::{Datelike, Local};
 use clap::Parser;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 /// Command line arguments for the calendar application
 #[derive(Parser)]
@@ -23,6 +28,14 @@ struct Args {
     /// Show only one month instead of the default three
     #[arg(short = 's', long = "single-month")]
     single_month: bool,
+    
+    /// Run in interactive mode with ncurses UI
+    #[arg(short = 'i', long = "interactive")]
+    interactive: bool,
+    
+    /// PostgreSQL connection string for event storage
+    #[arg(short = 'd', long = "database", default_value = "postgres://postgres:postgres@localhost/calendar")]
+    db_connection: String,
 }
 
 /// Entry point of the calendar application
@@ -51,8 +64,21 @@ struct Args {
 /// # Show single month instead of three
 /// calendar -s
 /// ```
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+    
+    if args.interactive {
+        // Run in interactive mode with ncurses UI
+        let db = Arc::new(Mutex::new(db::Database::connect(&args.db_connection).await?));
+        let mut ui = ui::CalendarUI::new(db);
+        
+        ui.init().await?;
+        let result = ui.run().await;
+        ui.cleanup();
+        
+        return result.map_err(|e| e.into());
+    }
     let now = Local::now();
     let date = now.date_naive();
 
@@ -111,4 +137,6 @@ fn main() {
             cal.print();
         }
     }
+    
+    Ok(())
 }
