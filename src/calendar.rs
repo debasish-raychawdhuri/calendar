@@ -1,6 +1,8 @@
-use chrono::{Datelike, Local};
-use colored::*;
-use std::{fmt::Display, print, str::FromStr};
+use chrono::{Datelike, Local, NaiveDate};
+// use colored::*; // pancurses will handle colors
+use std::{fmt::Display, str::FromStr};
+use pancurses::{Window, Attribute, chtype};
+
 
 /// Represents a calendar for a specific year and month
 pub struct Calendar {
@@ -129,17 +131,16 @@ impl Calendar {
     /// Helper function to add padding spaces based on number width
     /// 
     /// # Arguments
-    /// * `v` - The number to pad
+    /// * `v` - The day number
+    /// * `has_event` - Whether the day has an event (affects padding for asterisk)
     /// 
     /// # Returns
-    /// * A string containing the appropriate number of spaces
-    fn pad(v: u32) -> String {
-        if v <= 9 {
-            format!("   ")
-        } else if v <= 99 {
-            format!("  ")
-        } else {
-            format!(" ")
+    /// * A string containing the appropriate number of leading spaces for formatting.
+    fn get_day_padding(day: u32, has_event: bool) -> String {
+        if day <= 9 {
+            if has_event { " ".to_string() } else { "  ".to_string() } // " 1*" vs "  1 "
+        } else { // day is 10-31
+            if has_event { "".to_string() } else { " ".to_string() } // "15*" vs " 15 "
         }
     }
 
@@ -180,13 +181,26 @@ impl Calendar {
     /// * `day` - The day of the month to print.
     /// * `today` - A tuple representing today's date `(day, month, year)`.
     /// * `j` - The position of the day in the week (0-based).
-    fn print_day(&self, day: i32, today: (u32, u8, u16), j: usize) {
+    /// * `current_y` - The y-coordinate in the ncurses window.
+    /// * `start_x` - The starting x-coordinate for this day's printing.
+    /// * `selected_day_val`, `selected_month_0_idx`, `selected_year_val` - The currently selected date.
+    /// * `event_dates` - A slice of NaiveDate for days that have events.
+    fn print_day(&self, win: &Window, day: i32, today: (u32, u8, u16), j: usize, current_y: i32, start_x: i32, selected_day_val: u32, selected_month_0_idx: u8, selected_year_val: u16, event_dates: &[NaiveDate]) {
         if day <= 0 || day > self.get_total_days_in_month() as i32 {
-            print!("    ");
-        } else if j % 7 == 0 {
-            self.print_week_start_day(day, today);
+            win.mvaddstr(current_y, start_x + (j * 4) as i32, "    ");
         } else {
-            self.print_regular_day(day, today);
+            let current_day_naive_date = NaiveDate::from_ymd_opt(self.year as i32, (self.month + 1) as u32, day as u32);
+            let has_event = if let Some(d) = current_day_naive_date {
+                event_dates.contains(&d)
+            } else {
+                false
+            };
+
+            if j % 7 == 0 { // Sunday
+                self.print_week_start_day(win, day, today, current_y, start_x + (j * 4) as i32, selected_day_val, selected_month_0_idx, selected_year_val, has_event);
+            } else { // Other days
+                self.print_regular_day(win, day, today, current_y, start_x + (j * 4) as i32, selected_day_val, selected_month_0_idx, selected_year_val, has_event);
+            }
         }
     }
 
@@ -195,15 +209,27 @@ impl Calendar {
     /// # Arguments
     /// * `day` - The day of the month to print.
     /// * `today` - A tuple representing today's date `(day, month, year)`.
-    fn print_week_start_day(&self, day: i32, today: (u32, u8, u16)) {
-        if day == today.0 as i32 && self.month == today.1 && self.year == today.2 {
-            print!(
-                "{}{}",
-                Self::pad(day as u32),
-                format!("{}", day).bold().black().on_magenta()
-            );
-        } else {
-            print!("{}{}", Self::pad(day as u32), format!("{}", day).magenta());
+    /// * `y`, `x` - Coordinates for ncurses window.
+    /// * `selected_day_val`, `selected_month_0_idx`, `selected_year_val` - The currently selected date.
+    /// * `has_event` - Boolean indicating if the current day has an event.
+    fn print_week_start_day(&self, win: &Window, day: i32, today: (u32, u8, u16), y: i32, x: i32, selected_day_val: u32, selected_month_0_idx: u8, selected_year_val: u16, has_event: bool) {
+        let day_num_str = day.to_string();
+        let marker = if has_event { "*" } else { "" };
+        let combined_day_display = format!("{}{}", day_num_str, marker);
+        // Ensure the display string is right-aligned within 3 characters, followed by a space, for a total of 4 characters.
+        let day_str = format!("{:>3} ", combined_day_display); 
+        
+        let is_selected = day as u32 == selected_day_val && self.month == selected_month_0_idx && self.year == selected_year_val;
+        // let is_today = day == today.0 as i32 && self.month == today.1 && self.year == today.2;
+
+        if is_selected {
+            win.attron(Attribute::A_REVERSE);
+        }
+        // TODO: Add specific color for "today" if it's not selected, or combine attributes.
+        // TODO: Add specific color for "Sunday" if desired.
+        win.mvaddstr(y, x, &day_str);
+        if is_selected {
+            win.attroff(Attribute::A_REVERSE);
         }
     }
 
@@ -212,15 +238,26 @@ impl Calendar {
     /// # Arguments
     /// * `day` - The day of the month to print.
     /// * `today` - A tuple representing today's date `(day, month, year)`.
-    fn print_regular_day(&self, day: i32, today: (u32, u8, u16)) {
-        if day == today.0 as i32 && self.month == today.1 && self.year == today.2 {
-            print!(
-                "{}{}",
-                Self::pad(day as u32),
-                format!("{}", day).bold().black().on_cyan()
-            );
-        } else {
-            print!("{}{}", Self::pad(day as u32), format!("{}", day).cyan());
+    /// * `y`, `x` - Coordinates for ncurses window.
+    /// * `selected_day_val`, `selected_month_0_idx`, `selected_year_val` - The currently selected date.
+    /// * `has_event` - Boolean indicating if the current day has an event.
+    fn print_regular_day(&self, win: &Window, day: i32, today: (u32, u8, u16), y: i32, x: i32, selected_day_val: u32, selected_month_0_idx: u8, selected_year_val: u16, has_event: bool) {
+        let day_num_str = day.to_string();
+        let marker = if has_event { "*" } else { "" };
+        let combined_day_display = format!("{}{}", day_num_str, marker);
+        // Ensure the display string is right-aligned within 3 characters, followed by a space.
+        let day_str = format!("{:>3} ", combined_day_display);
+
+        let is_selected = day as u32 == selected_day_val && self.month == selected_month_0_idx && self.year == selected_year_val;
+        // let is_today = day == today.0 as i32 && self.month == today.1 && self.year == today.2;
+
+        if is_selected {
+            win.attron(Attribute::A_REVERSE);
+        }
+        // TODO: Add specific color for "today" if it's not selected, or combine attributes.
+        win.mvaddstr(y, x, &day_str);
+        if is_selected {
+            win.attroff(Attribute::A_REVERSE);
         }
     }
 
@@ -241,25 +278,25 @@ impl Calendar {
     /// 
     /// # Arguments
     /// * `line_no` - The row number (0-5) to print
-    fn print_line(&self, line_no: u32) {
+    /// * `start_y` - The base y-coordinate for calendar rows.
+    /// * `selected_day_val`, `selected_month_0_idx`, `selected_year_val` - The currently selected date.
+    /// * `event_dates` - A slice of NaiveDate for days that have events.
+    fn print_line(&self, win: &Window, line_no: u32, start_y: i32, start_x: i32, selected_day_val: u32, selected_month_0_idx: u8, selected_year_val: u16, event_dates: &[NaiveDate]) {
         let today = Self::get_today();
         let line_start = self.calculate_line_start(line_no);
+        let current_y = start_y + line_no as i32;
         for (j, day) in (line_start..line_start + 7).enumerate() {
-            self.print_day(day, today, j);
+            self.print_day(win, day, today, j, current_y, start_x, selected_day_val, selected_month_0_idx, selected_year_val, event_dates);
         }
     }
 
     /// Prints the day names header (Sun Mon Tue etc.)
-    /// Uses different colors for Sunday and other days
-    fn print_day_names(&self) {
-        print!(
-            "{} {}",
-            " Sun".red().bold(),
-            "Mon Tue Wed Thu Fri Sat".green().bold()
-        );
+    fn print_day_names(&self, win: &Window, y: i32, x: i32) {
+        // TODO: Add ncurses colors
+        win.mvaddstr(y, x, " Sun Mon Tue Wed Thu Fri Sat");
     }
 
-    fn print_heading_month(&self) {
+    fn print_heading_month(&self, win: &Window, y: i32, x: i32) {
         let month_names = [
             "January",
             "February",
@@ -277,81 +314,94 @@ impl Calendar {
 
         let name_length = month_names[self.month as usize].len();
         let total_length = name_length;
-        let empty_space_left = (28 - total_length) / 2 + 1;
-        let empty_space_right = 28 - total_length - empty_space_left;
-        print!(
-            "{}{}{}",
+        // Approximate centering for a 28 char width (7 days * 4 chars)
+        let available_width = 28;
+        let empty_space_left = (available_width - total_length) / 2;
+        // let empty_space_right = available_width - total_length - empty_space_left;
+
+        let heading = format!(
+            "{}{}",
             Self::spaces(empty_space_left),
-            month_names[self.month as usize].yellow(),
-            Self::spaces(empty_space_right),
+            month_names[self.month as usize]
+            // Self::spaces(empty_space_right) // Not strictly needed with mvaddstr
         );
+        win.mvaddstr(y, x, &heading);
     }
 
     /// Prints three months side by side in the calendar.
+    /// (This function will need significant rework for ncurses, placeholder for now)
     ///
     /// # Arguments
+    /// * `win` - The ncurses window to draw in.
     /// * `cal1` - The first calendar to print.
     /// * `cal2` - The second calendar to print.
     /// * `cal3` - The third calendar to print.
-    pub fn print_three_calendars(cal1: Calendar, cal2: Calendar, cal3: Calendar) {
-        cal1.print_heading_month();
-        print!("  ");
-        cal2.print_heading_month();
-        print!("  ");
-        cal3.print_heading_month();
-        println!();
+    pub fn print_three_calendars(_win: &Window, _cal1: Calendar, _cal2: Calendar, _cal3: Calendar) {
+        // cal1.print_heading_month(win);
+        // cal2.print_heading_month(win);
+        // cal3.print_heading_month(win);
+        // win.mvaddstr(next_line, x, ""); // Placeholder for println
 
-        cal1.print_day_names();
-        print!("  ");
-        cal2.print_day_names();
-        print!("  ");
-        cal3.print_day_names();
-        println!();
+        // cal1.print_day_names(win);
+        // cal2.print_day_names(win);
+        // cal3.print_day_names(win);
+        // win.mvaddstr(next_line, x, ""); // Placeholder for println
 
-        for i in 0..6 {
-            cal1.print_line(i);
-            print!("  ");
-            cal2.print_line(i);
-            print!("  ");
-            cal3.print_line(i);
-            println!();
-        }
+        // for i in 0..6 {
+            // cal1.print_line(win, i);
+            // cal2.print_line(win, i);
+            // cal3.print_line(win, i);
+            // win.mvaddstr(next_line, x, ""); // Placeholder for println
+        // }
+        // For now, just indicate it's not implemented
+        // _win.mvaddstr(0, 0, "Three-month view not implemented for ncurses yet.");
     }
 
-    /// Prints a single month in the calendar.
+    /// Prints a single month in the ncurses window.
     ///
     /// # Arguments
+    /// * `win` - The ncurses window to draw in.
     /// * `cal` - The calendar to print.
-    pub fn print_one_month(cal: Calendar) {
-        cal.print_heading_month();
-        println!();
-        cal.print_day_names();
-        println!();
+    /// * `selected_day_val`, `selected_month_0_idx`, `selected_year_val` - The currently selected date to highlight.
+    /// * `event_dates` - A slice of NaiveDate for days that have events.
+    pub fn print_one_month(win: &Window, cal: Calendar, selected_day_val: u32, selected_month_0_idx: u8, selected_year_val: u16, event_dates: &[NaiveDate]) {
+        let start_y = 1; // Starting row for the calendar in the window
+        let start_x = 1; // Starting col for the calendar in the window
+
+        win.clear(); // Clear the window before drawing
+
+        cal.print_heading_month(win, start_y, start_x);
+        cal.print_day_names(win, start_y + 1, start_x); // y increased by 1
         for i in 0..6 {
-            cal.print_line(i);
-            println!();
+            // y increased by 2 to account for heading and day names
+            cal.print_line(win, i, start_y + 2, start_x, selected_day_val, selected_month_0_idx, selected_year_val, event_dates); 
         }
+        win.refresh(); // Refresh the window to show changes
     }
 
     /// Prints the entire year as a calendar.
+    /// (This function will need significant rework for ncurses, placeholder for now)
     ///
     /// # Arguments
+    /// * `win` - The ncurses window to draw in.
     /// * `year` - The year to print.
-    pub fn print_entire_year(year: u16) {
-        Self::print_year_heading(year);
-        for i in 0..4 {
-            let cal1 = Calendar { year, month: i * 3 };
-            let cal2 = Calendar {
-                year,
-                month: i * 3 + 1,
-            };
-            let cal3 = Calendar {
-                year,
-                month: i * 3 + 2,
-            };
-            Self::print_three_calendars(cal1, cal2, cal3);
-            println!();
-        }
+    pub fn print_entire_year(_win: &Window, year: u16) {
+        // Self::print_year_heading(win, year); // Needs adaptation
+        // for i in 0..4 {
+            // let cal1 = Calendar { year, month: i * 3 };
+            // let cal2 = Calendar {
+            //     year,
+            //     month: i * 3 + 1,
+            // };
+            // let cal3 = Calendar {
+            //     year,
+            //     month: i * 3 + 2,
+            // };
+            // Self::print_three_calendars(win, cal1, cal2, cal3); // Needs adaptation
+            // win.mvaddstr(next_line, x, ""); // Placeholder
+        // }
+        // For now, just indicate it's not implemented
+        // _win.mvaddstr(0,0, &format!("Year view for {} not implemented for ncurses yet.", year));
     }
 
     /// Gets the calendar for the previous month
@@ -386,21 +436,25 @@ impl Calendar {
         }
     }
 
-    fn print_year_heading(year: u16) {
-        let space_on_each_side = 42;
-        print!("{}", Self::spaces(space_on_each_side));
-        print!("{}", year.to_string().bold().bright_yellow());
-        print!("{}", Self::spaces(space_on_each_side));
-        println!();
-        println!();
+    fn print_year_heading(_win: &Window, year: u16) {
+        // let space_on_each_side = 42; // This needs to be window-relative
+        // _win.mvaddstr(y, x, &Self::spaces(space_on_each_side));
+        // _win.addstr(&year.to_string()); // TODO: Add attributes
+        // _win.addstr(&Self::spaces(space_on_each_side));
+        // _win.mvaddstr(next_line, x, ""); // Placeholder
+        // _win.mvaddstr(next_line, x, ""); // Placeholder
+         _win.mvaddstr(0,0, &format!("Year Heading for {}", year)); // Basic placeholder
     }
 
     /// Prints the calendar for the current month, along with the previous and next months.
-    pub fn print(self) {
+    /// (This function will need significant rework for ncurses, placeholder for now)
+    pub fn print(self, win: &Window) {
         let prev_month = self.prev_month();
         let next_month = self.next_month();
-        Self::print_year_heading(self.year);
-        Self::print_three_calendars(prev_month, self, next_month);
+        // Self::print_year_heading(win, self.year); // Needs adaptation
+        Self::print_three_calendars(win, prev_month, self, next_month); // Needs adaptation
+        win.mvaddstr(0, 0, "Three-month (default) view not implemented for ncurses yet.");
+
     }
 }
 
