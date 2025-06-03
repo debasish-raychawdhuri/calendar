@@ -1,6 +1,7 @@
 mod calendar;
 mod db;
 mod ui;
+mod edit_event;
 
 use calendar::Calendar;
 use chrono::{Datelike, Local};
@@ -30,12 +31,12 @@ struct Args {
     single_month: bool,
     
     /// Run in interactive mode with ncurses UI
-    #[arg(short = 'i', long = "interactive")]
+    #[arg(short = 'i', long = "interactive", action = clap::ArgAction::SetTrue)]
     interactive: bool,
     
-    /// PostgreSQL connection string for event storage
-    #[arg(short = 'd', long = "database", default_value = "postgres://postgres:postgres@localhost/calendar")]
-    db_connection: String,
+    /// Custom path for SQLite database file (optional)
+    #[arg(short = 'd', long = "database")]
+    db_path: Option<String>,
 }
 
 /// Entry point of the calendar application
@@ -70,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     if args.interactive {
         // Run in interactive mode with ncurses UI
-        let db = Arc::new(Mutex::new(db::Database::connect(&args.db_connection).await?));
+        let db = Arc::new(Mutex::new(db::Database::connect(args.db_path.as_deref()).await?));
         let mut ui = ui::CalendarUI::new(db);
         
         ui.init().await?;
@@ -122,7 +123,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             month: month - 1,
         };
         if single {
-            Calendar::print_one_month(cal);
+            Calendar::print_single_month(cal);
         } else {
             cal.print();
         }
@@ -132,7 +133,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             month: now.month0() as u8,
         };
         if single {
-            Calendar::print_one_month(cal);
+            Calendar::print_single_month(cal);
         } else {
             cal.print();
         }

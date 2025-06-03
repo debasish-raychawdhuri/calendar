@@ -1,6 +1,6 @@
 use crate::calendar::{Calendar, DayOfWeek};
 use crate::db::{Database, DbError, Event};
-use chrono::{Datelike, Local, NaiveDate};
+use chrono::NaiveDate;
 use ncurses::*;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -12,6 +12,16 @@ const COLOR_TODAY: i16 = 3;
 const COLOR_EVENT: i16 = 4;
 const COLOR_SELECTED: i16 = 5;
 const COLOR_DIALOG: i16 = 6;
+const COLOR_SELECTED_EVENT: i16 = 7;
+const COLOR_SELECTED_TODAY: i16 = 8;
+const COLOR_HEADER: i16 = 9;
+
+/// View modes for the calendar UI
+#[derive(PartialEq, Clone, Copy)]
+pub enum ViewMode {
+    Calendar,  // Main calendar view
+    EventList, // Event list view
+}
 
 pub struct CalendarUI {
     db: Arc<Mutex<Database>>,
@@ -19,8 +29,9 @@ pub struct CalendarUI {
     current_month: u8,
     selected_day: u32,
     events_cache: Vec<Event>,
+    view_mode: ViewMode,
+    selected_event_index: usize,
 }
-
 impl CalendarUI {
     pub fn new(db: Arc<Mutex<Database>>) -> Self {
         let today = Calendar::get_today();
@@ -30,6 +41,8 @@ impl CalendarUI {
             current_month: today.1,
             selected_day: today.0,
             events_cache: Vec::new(),
+            view_mode: ViewMode::Calendar,
+            selected_event_index: 0,
         }
     }
 
@@ -41,6 +54,7 @@ impl CalendarUI {
         noecho();
         keypad(stdscr(), true);
         curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
+        timeout(100); // Set getch timeout for non-blocking input
 
         // Initialize color pairs
         init_pair(COLOR_DEFAULT, COLOR_WHITE, COLOR_BLACK);
@@ -49,6 +63,9 @@ impl CalendarUI {
         init_pair(COLOR_EVENT, COLOR_CYAN, COLOR_BLACK);
         init_pair(COLOR_SELECTED, COLOR_BLACK, COLOR_WHITE);
         init_pair(COLOR_DIALOG, COLOR_BLACK, COLOR_CYAN);
+        init_pair(COLOR_SELECTED_EVENT, COLOR_BLACK, COLOR_CYAN);
+        init_pair(COLOR_SELECTED_TODAY, COLOR_BLACK, COLOR_GREEN);
+        init_pair(COLOR_HEADER, COLOR_YELLOW, COLOR_BLACK);
 
         // Load events for the current month
         self.load_events().await?;
@@ -111,21 +128,26 @@ impl CalendarUI {
         let today = Calendar::get_today();
         let is_current_month = cal.year == today.2 && cal.month == today.1;
 
+        // Draw border around the entire screen
+        box_(stdscr(), 0, 0);
+
         // Print month and year
         let month_name = cal.get_month_name();
         let title = format!("{} {}", month_name, cal.year);
+        attron(COLOR_PAIR(COLOR_HEADER) | A_BOLD());
         mvprintw(1, (COLS() - title.len() as i32) / 2, &title);
+        attroff(COLOR_PAIR(COLOR_HEADER) | A_BOLD());
 
         // Print day names
         let day_names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
         for (i, day) in day_names.iter().enumerate() {
             if i == 0 {
-                attron(COLOR_PAIR(COLOR_HIGHLIGHT));
+                attron(COLOR_PAIR(COLOR_HIGHLIGHT) | A_BOLD());
             } else {
-                attron(COLOR_PAIR(COLOR_DEFAULT));
+                attron(COLOR_PAIR(COLOR_DEFAULT) | A_BOLD());
             }
             mvprintw(3, 4 + i as i32 * 4, day);
-            attroff(COLOR_PAIR(if i == 0 { COLOR_HIGHLIGHT } else { COLOR_DEFAULT }));
+            attroff(if i == 0 { COLOR_PAIR(COLOR_HIGHLIGHT) } else { COLOR_PAIR(COLOR_DEFAULT) } | A_BOLD());
         }
 
         // Calculate first day of month
@@ -157,7 +179,9 @@ impl CalendarUI {
                     let is_selected = day_counter == self.selected_day;
                     let has_event = self.has_event(day_counter);
 
-                    let color = if is_selected {
+                    let color = if is_selected && is_today {
+                        COLOR_SELECTED_TODAY
+                    } else if is_selected {
                         COLOR_SELECTED
                     } else if is_today {
                         COLOR_TODAY
@@ -169,9 +193,15 @@ impl CalendarUI {
                         COLOR_DEFAULT
                     };
 
-                    attron(COLOR_PAIR(color));
+                    let attrs = if is_selected || is_today || has_event {
+                        A_BOLD()
+                    } else {
+                        0
+                    };
+
+                    attron(COLOR_PAIR(color) | attrs);
                     mvprintw(y, x, &format!("{:2}", day_counter));
-                    attroff(COLOR_PAIR(color));
+                    attroff(COLOR_PAIR(color) | attrs);
 
                     day_counter += 1;
                 }
@@ -179,11 +209,13 @@ impl CalendarUI {
         }
 
         // Print navigation help
+        attron(A_BOLD());
         mvprintw(
             LINES() - 2,
             2,
-            "Arrow keys: Navigate | Enter: View/Add Event | q: Quit",
+            "Arrow keys: Navigate | Enter: View/Add Event | Tab: Switch View | q: Quit",
         );
+        attroff(A_BOLD());
 
         // Display events for selected day
         self.draw_events_panel();
@@ -195,6 +227,7 @@ impl CalendarUI {
         let events = self.get_events_for_day(self.selected_day);
         let panel_width = 40;
         let panel_x = COLS() - panel_width - 2;
+        let panel_height = LINES() - 6;
 
         // Draw panel border
         for y in 3..LINES() - 3 {
@@ -202,28 +235,40 @@ impl CalendarUI {
         }
 
         // Panel title
-        attron(A_BOLD());
+        attron(COLOR_PAIR(COLOR_HEADER) | A_BOLD());
         mvprintw(
             3,
             panel_x,
             &format!(" Events for {}/{}/{} ", self.selected_day, self.current_month + 1, self.current_year),
         );
-        attroff(A_BOLD());
+        attroff(COLOR_PAIR(COLOR_HEADER) | A_BOLD());
 
         // List events
         if events.is_empty() {
             mvprintw(5, panel_x + 2, "No events for this day");
         } else {
             for (i, event) in events.iter().enumerate() {
-                if i >= 10 {
-                    // Limit display to 10 events
-                    mvprintw(5 + i as i32, panel_x + 2, "... more events");
+                if i >= ((panel_height - 2) / 2) as usize {
+                    // Limit display based on panel height
+                    mvprintw(5 + i as i32 * 2, panel_x + 2, "... more events");
                     break;
                 }
                 
-                attron(A_BOLD());
+                let is_selected = self.view_mode == ViewMode::EventList && i == self.selected_event_index;
+                
+                if is_selected {
+                    attron(COLOR_PAIR(COLOR_SELECTED_EVENT) | A_BOLD());
+                } else {
+                    attron(A_BOLD());
+                }
+                
                 mvprintw(5 + i as i32 * 2, panel_x + 2, &event.title);
-                attroff(A_BOLD());
+                
+                if is_selected {
+                    attroff(COLOR_PAIR(COLOR_SELECTED_EVENT) | A_BOLD());
+                } else {
+                    attroff(A_BOLD());
+                }
                 
                 if let Some(desc) = &event.description {
                     let desc_short = if desc.len() > panel_width as usize - 4 {
@@ -231,20 +276,293 @@ impl CalendarUI {
                     } else {
                         desc.clone()
                     };
+                    
+                    if is_selected {
+                        attron(COLOR_PAIR(COLOR_SELECTED_EVENT));
+                    }
+                    
                     mvprintw(6 + i as i32 * 2, panel_x + 4, &desc_short);
+                    
+                    if is_selected {
+                        attroff(COLOR_PAIR(COLOR_SELECTED_EVENT));
+                    }
                 }
             }
         }
     }
 
     async fn show_event_dialog(&self) -> Result<Option<Event>, DbError> {
-        // Save current screen
-        let win = newwin(0, 0, 0, 0);
-        wrefresh(win);
+        // Create event date
+        let event_date = match NaiveDate::from_ymd_opt(
+            self.current_year as i32,
+            (self.current_month + 1) as u32,
+            self.selected_day,
+        ) {
+            Some(date) => date,
+            None => return Err(DbError::InvalidDate),
+        };
+        
+        // Use the shared dialog function from edit_event module
+        crate::edit_event::show_event_dialog(&self.db, event_date, None).await
+    }
 
+    pub async fn run(&mut self) -> Result<(), DbError> {
+        self.draw_calendar();
+
+        loop {
+            let ch = getch();
+            if ch == ERR {
+                // No input, continue loop
+                continue;
+            }
+            
+            // Check for quit command in any mode
+            if ch == 113 || ch == 81 { // 'q' or 'Q'
+                return Ok(());
+            }
+            
+            match self.view_mode {
+                ViewMode::Calendar => self.handle_calendar_input(ch).await?,
+                ViewMode::EventList => self.handle_event_list_input(ch).await?,
+            }
+            
+            self.draw_calendar();
+        }
+    }
+    
+    async fn handle_calendar_input(&mut self, ch: i32) -> Result<(), DbError> {
+        match ch {
+            KEY_LEFT => {
+                if self.selected_day > 1 {
+                    self.selected_day -= 1;
+                } else {
+                    // Move to previous month
+                    let prev_cal = Calendar {
+                        year: self.current_year,
+                        month: self.current_month,
+                    }
+                    .prev_month();
+                    
+                    self.current_year = prev_cal.year;
+                    self.current_month = prev_cal.month;
+                    self.selected_day = prev_cal.get_total_days_in_month();
+                    
+                    self.load_events().await?;
+                }
+            }
+            KEY_RIGHT => {
+                let total_days = Calendar {
+                    year: self.current_year,
+                    month: self.current_month,
+                }
+                .get_total_days_in_month();
+                
+                if self.selected_day < total_days {
+                    self.selected_day += 1;
+                } else {
+                    // Move to next month
+                    let next_cal = Calendar {
+                        year: self.current_year,
+                        month: self.current_month,
+                    }
+                    .next_month();
+                    
+                    self.current_year = next_cal.year;
+                    self.current_month = next_cal.month;
+                    self.selected_day = 1;
+                    
+                    self.load_events().await?;
+                }
+            }
+            KEY_UP => {
+                if self.selected_day > 7 {
+                    self.selected_day -= 7;
+                } else {
+                    // Move to previous month
+                    let prev_cal = Calendar {
+                        year: self.current_year,
+                        month: self.current_month,
+                    }
+                    .prev_month();
+                    
+                    self.current_year = prev_cal.year;
+                    self.current_month = prev_cal.month;
+                    
+                    let total_days = prev_cal.get_total_days_in_month();
+                    let day_offset = 7 - self.selected_day;
+                    if total_days >= day_offset {
+                        self.selected_day = total_days - day_offset + 1;
+                    } else {
+                        self.selected_day = total_days;
+                    }
+                    
+                    self.load_events().await?;
+                }
+            }
+            KEY_DOWN => {
+                let total_days = Calendar {
+                    year: self.current_year,
+                    month: self.current_month,
+                }
+                .get_total_days_in_month();
+                
+                if self.selected_day + 7 <= total_days {
+                    self.selected_day += 7;
+                } else {
+                    // Move to next month
+                    let next_cal = Calendar {
+                        year: self.current_year,
+                        month: self.current_month,
+                    }
+                    .next_month();
+                    
+                    self.current_year = next_cal.year;
+                    self.current_month = next_cal.month;
+                    self.selected_day = self.selected_day + 7 - total_days;
+                    if self.selected_day > next_cal.get_total_days_in_month() {
+                        self.selected_day = next_cal.get_total_days_in_month();
+                    }
+                    
+                    self.load_events().await?;
+                }
+            }
+            KEY_ENTER | 10 => {
+                // Show dialog to add/edit event
+                if let Some(event) = self.show_event_dialog().await? {
+                    let db = self.db.lock().await;
+                    db.add_event(&event).await?;
+                    drop(db);
+                    self.load_events().await?;
+                }
+            }
+            9 => { // Tab key
+                let events = self.get_events_for_day(self.selected_day);
+                if !events.is_empty() {
+                    self.view_mode = ViewMode::EventList;
+                    self.selected_event_index = 0;
+                }
+            }
+            KEY_HOME => {
+                // Go to first day of month
+                self.selected_day = 1;
+            }
+            KEY_END => {
+                // Go to last day of month
+                self.selected_day = Calendar {
+                    year: self.current_year,
+                    month: self.current_month,
+                }
+                .get_total_days_in_month();
+            }
+            KEY_PPAGE => {
+                // Previous month
+                let prev_cal = Calendar {
+                    year: self.current_year,
+                    month: self.current_month,
+                }
+                .prev_month();
+                
+                self.current_year = prev_cal.year;
+                self.current_month = prev_cal.month;
+                
+                let total_days = prev_cal.get_total_days_in_month();
+                if self.selected_day > total_days {
+                    self.selected_day = total_days;
+                }
+                
+                self.load_events().await?;
+            }
+            KEY_NPAGE => {
+                // Next month
+                let next_cal = Calendar {
+                    year: self.current_year,
+                    month: self.current_month,
+                }
+                .next_month();
+                
+                self.current_year = next_cal.year;
+                self.current_month = next_cal.month;
+                
+                let total_days = next_cal.get_total_days_in_month();
+                if self.selected_day > total_days {
+                    self.selected_day = total_days;
+                }
+                
+                self.load_events().await?;
+            }
+            _ => {}
+        }
+        
+        Ok(())
+    }
+    
+    async fn handle_event_list_input(&mut self, ch: i32) -> Result<(), DbError> {
+        let events = self.get_events_for_day(self.selected_day);
+        if events.is_empty() {
+            self.view_mode = ViewMode::Calendar;
+            return Ok(());
+        }
+        
+        match ch {
+            KEY_UP => {
+                if self.selected_event_index > 0 {
+                    self.selected_event_index -= 1;
+                }
+            },
+            KEY_DOWN => {
+                if self.selected_event_index < events.len() - 1 {
+                    self.selected_event_index += 1;
+                }
+            },
+            9 => { // Tab key
+                self.view_mode = ViewMode::Calendar;
+            },
+            KEY_ENTER | 10 => {
+                if let Some(event_id) = events[self.selected_event_index].id {
+                    // Show event details with edit/delete options
+                    self.show_event_details(event_id).await?;
+                }
+            },
+            KEY_DC => { // Delete key
+                if let Some(event_id) = events[self.selected_event_index].id {
+                    if crate::edit_event::confirm_delete_event() {
+                        let db = self.db.lock().await;
+                        let _ = db.delete_event(event_id).await;
+                        drop(db);
+                        self.load_events().await?;
+                        
+                        if self.selected_event_index >= self.get_events_for_day(self.selected_day).len() && self.selected_event_index > 0 {
+                            self.selected_event_index -= 1;
+                        }
+                    }
+                }
+            },
+            101 | 69 => { // 'e' or 'E' for Edit
+                if let Some(event_id) = events[self.selected_event_index].id {
+                    // Edit the selected event
+                    crate::edit_event::edit_event(&self.db, event_id).await?;
+                    self.load_events().await?;
+                }
+            },
+            _ => {}
+        }
+        
+        Ok(())
+    }
+    
+    async fn show_event_details(&mut self, event_id: i32) -> Result<(), DbError> {
+        let db = self.db.lock().await;
+        let event = db.get_event(event_id).await?;
+        drop(db);
+        
+        // Create a panel to cover the entire screen
+        let background = newwin(LINES(), COLS(), 0, 0);
+        wbkgd(background, COLOR_PAIR(COLOR_DEFAULT));
+        wrefresh(background);
+        
         // Create dialog window
-        let height = 10;
-        let width = 60;
+        let height = 18;
+        let width = 70;
         let starty = (LINES() - height) / 2;
         let startx = (COLS() - width) / 2;
         
@@ -253,189 +571,178 @@ impl CalendarUI {
         wbkgd(dialog, COLOR_PAIR(COLOR_DIALOG));
         
         // Dialog title
-        mvwprintw(dialog, 1, 2, &format!("Event for {}/{}/{}", self.selected_day, self.current_month + 1, self.current_year));
-        mvwprintw(dialog, 3, 2, "Title: ");
-        mvwprintw(dialog, 5, 2, "Description (optional): ");
-        mvwprintw(dialog, 8, 2, "Press Enter to save, Esc to cancel");
+        mvwprintw(dialog, 1, 2, "Event Details");
+        mvwprintw(dialog, 3, 2, &format!("Date: {}", event.date));
         
-        wrefresh(dialog);
-        
-        // Create input fields
-        echo();
-        curs_set(CURSOR_VISIBILITY::CURSOR_VISIBLE);
-        
-        // Title input
-        wmove(dialog, 3, 9);
-        wrefresh(dialog);
-        let mut title = String::new();
-        let mut ch = getch();
-        while ch != KEY_ENTER && ch != 10 && ch != 27 {
-            if ch == KEY_BACKSPACE || ch == 127 {
-                if !title.is_empty() {
-                    title.pop();
-                    mvwprintw(dialog, 3, 9, &format!("{:<30}", title));
-                    wmove(dialog, 3, 9 + title.len() as i32);
-                }
-            } else if ch >= 32 && ch <= 126 && title.len() < 30 {
-                title.push(ch as u8 as char);
-                mvwaddch(dialog, 3, 9 + title.len() as i32 - 1, ch as u32);
-            }
-            wrefresh(dialog);
-            ch = getch();
-        }
-        
-        if ch == 27 {
-            // Escape key pressed
-            delwin(dialog);
-            delwin(win);
-            noecho();
-            curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
-            return Ok(None);
-        }
-        
-        // Description input
-        wmove(dialog, 5, 25);
-        wrefresh(dialog);
-        let mut description = String::new();
-        ch = getch();
-        while ch != KEY_ENTER && ch != 10 && ch != 27 {
-            if ch == KEY_BACKSPACE || ch == 127 {
-                if !description.is_empty() {
-                    description.pop();
-                    mvwprintw(dialog, 5, 25, &format!("{:<30}", description));
-                    wmove(dialog, 5, 25 + description.len() as i32);
-                }
-            } else if ch >= 32 && ch <= 126 && description.len() < 30 {
-                description.push(ch as u8 as char);
-                mvwaddch(dialog, 5, 25 + description.len() as i32 - 1, ch as u32);
-            }
-            wrefresh(dialog);
-            ch = getch();
-        }
-        
-        noecho();
-        curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
-        
-        if ch == 27 {
-            // Escape key pressed
-            delwin(dialog);
-            delwin(win);
-            return Ok(None);
-        }
-        
-        // Create event
-        let event_date = match NaiveDate::from_ymd_opt(
-            self.current_year as i32,
-            (self.current_month + 1) as u32,
-            self.selected_day,
-        ) {
-            Some(date) => date,
-            None => {
-                delwin(dialog);
-                delwin(win);
-                return Err(DbError::InvalidDate);
-            }
-        };
-        
-        let event = Event {
-            id: None,
-            title,
-            description: if description.is_empty() { None } else { Some(description) },
-            date: event_date,
-            created_at: None,
-        };
-        
-        delwin(dialog);
-        delwin(win);
-        
-        Ok(Some(event))
-    }
-
-    pub async fn run(&mut self) -> Result<(), DbError> {
-        self.draw_calendar();
-
-        loop {
-            let ch = getch();
-            match ch {
-                KEY_LEFT => {
-                    if self.selected_day > 1 {
-                        self.selected_day -= 1;
+        // Function to wrap text to fit within width
+        let wrap_text = |text: &str, max_width: usize| -> Vec<String> {
+            let mut lines = Vec::new();
+            let mut current_line = String::new();
+            
+            for word in text.split_whitespace() {
+                if current_line.len() + word.len() + 1 > max_width {
+                    lines.push(current_line);
+                    current_line = word.to_string();
+                } else {
+                    if !current_line.is_empty() {
+                        current_line.push(' ');
                     }
+                    current_line.push_str(word);
                 }
-                KEY_RIGHT => {
-                    let total_days = Calendar {
-                        year: self.current_year,
-                        month: self.current_month,
-                    }
-                    .get_total_days_in_month();
-                    
-                    if self.selected_day < total_days {
-                        self.selected_day += 1;
-                    }
-                }
-                KEY_UP => {
-                    if self.selected_day > 7 {
-                        self.selected_day -= 7;
-                    } else {
-                        // Move to previous month
-                        let prev_cal = Calendar {
-                            year: self.current_year,
-                            month: self.current_month,
-                        }
-                        .prev_month();
-                        
-                        self.current_year = prev_cal.year;
-                        self.current_month = prev_cal.month;
-                        
-                        let total_days = prev_cal.get_total_days_in_month();
-                        self.selected_day = total_days - (7 - self.selected_day);
-                        
-                        self.load_events().await?;
-                    }
-                }
-                KEY_DOWN => {
-                    let total_days = Calendar {
-                        year: self.current_year,
-                        month: self.current_month,
-                    }
-                    .get_total_days_in_month();
-                    
-                    if self.selected_day + 7 <= total_days {
-                        self.selected_day += 7;
-                    } else {
-                        // Move to next month
-                        let next_cal = Calendar {
-                            year: self.current_year,
-                            month: self.current_month,
-                        }
-                        .next_month();
-                        
-                        self.current_year = next_cal.year;
-                        self.current_month = next_cal.month;
-                        self.selected_day = self.selected_day + 7 - total_days;
-                        
-                        self.load_events().await?;
-                    }
-                }
-                KEY_ENTER | 10 => {
-                    // Show dialog to add/edit event
-                    if let Some(event) = self.show_event_dialog().await? {
-                        let mut db = self.db.lock().await;
-                        db.add_event(&event).await?;
-                        drop(db);
-                        self.load_events().await?;
-                    }
-                }
-                113 | 81 => {
-                    // 'q' or 'Q' to quit
-                    break;
-                }
-                _ => {}
             }
             
-            self.draw_calendar();
+            if !current_line.is_empty() {
+                lines.push(current_line);
+            }
+            
+            // Handle empty text
+            if lines.is_empty() {
+                lines.push(String::new());
+            }
+            
+            lines
+        };
+        
+        // Wrap title if needed
+        let title_max_width = width - 10; // "Title: " + padding
+        let title_wrapped = wrap_text(&event.title, title_max_width as usize);
+        
+        // Display title (potentially multi-line)
+        mvwprintw(dialog, 4, 2, "Title:");
+        for (i, line) in title_wrapped.iter().enumerate() {
+            mvwprintw(dialog, 4 + i as i32, 9, line);
         }
-
+        
+        // Adjust starting position for description based on title height
+        let desc_start_y = 4 + title_wrapped.len() as i32 + 1;
+        
+        // Action buttons at the bottom
+        mvwprintw(dialog, height - 3, 2, "[E]dit | [D]elete | Any other key: Close");
+        
+        if let Some(desc) = &event.description {
+            mvwprintw(dialog, desc_start_y, 2, "Description:");
+            
+            // Calculate available space for description
+            let desc_width = width - 8; // Leave padding for borders
+            let desc_area_height = height - desc_start_y - 5; // Leave room for buttons and borders
+            
+            // Wrap description text to fit within dialog
+            let mut wrapped_lines = Vec::new();
+            
+            // First split by explicit newlines
+            for paragraph in desc.split('\n') {
+                if paragraph.is_empty() {
+                    wrapped_lines.push(String::new());
+                } else {
+                    // Then wrap each paragraph
+                    wrapped_lines.extend(wrap_text(paragraph, desc_width as usize - 2));
+                }
+            }
+            
+            // Display lines with scrolling if needed
+            let visible_lines = desc_area_height as usize;
+            let mut scroll_pos: usize = 0;
+            let max_scroll = wrapped_lines.len().saturating_sub(visible_lines).max(0);
+            let mut redraw = true;
+            
+            while redraw {
+                if redraw {
+                    // Clear the description area
+                    for y in 0..desc_area_height {
+                        for x in 0..desc_width-2 {
+                            mvwaddch(dialog, desc_start_y + 1 + y, 4 + x, ' ' as u32);
+                        }
+                    }
+                    
+                    // Display visible lines with proper padding
+                    for (i, line) in wrapped_lines.iter().enumerate().skip(scroll_pos).take(visible_lines) {
+                        mvwprintw(dialog, desc_start_y + 1 + (i - scroll_pos) as i32, 4, line);
+                    }
+                    
+                    // Show scroll indicators if needed
+                    if scroll_pos > 0 {
+                        mvwprintw(dialog, desc_start_y + 1, width - 5, "↑");
+                    }
+                    if scroll_pos < max_scroll {
+                        mvwprintw(dialog, desc_start_y + desc_area_height, width - 5, "↓");
+                    }
+                    
+                    wrefresh(dialog);
+                    redraw = false;
+                }
+                
+                // Handle scrolling and actions
+                let ch = wgetch(dialog);
+                match ch {
+                    KEY_UP => {
+                        if scroll_pos > 0 {
+                            scroll_pos -= 1;
+                            redraw = true;
+                        }
+                    },
+                    KEY_DOWN => {
+                        if scroll_pos < max_scroll {
+                            scroll_pos += 1;
+                            redraw = true;
+                        }
+                    },
+                    101 | 69 => { // 'e' or 'E' for Edit
+                        delwin(dialog);
+                        delwin(background);
+                        crate::edit_event::edit_event(&self.db, event_id).await?;
+                        self.load_events().await?;
+                        return Ok(());
+                    },
+                    100 | 68 => { // 'd' or 'D' for Delete
+                        if crate::edit_event::confirm_delete_event() {
+                            let db = self.db.lock().await;
+                            let _ = db.delete_event(event_id).await;
+                            drop(db);
+                            self.load_events().await?;
+                            delwin(dialog);
+                            delwin(background);
+                            return Ok(());
+                        } else {
+                            redraw = true;
+                        }
+                    },
+                    _ => {
+                        // Any other key closes the dialog
+                        break;
+                    }
+                }
+            }
+        } else {
+            mvwprintw(dialog, desc_start_y + 1, 4, "No description available");
+            
+            // Wait for key press
+            let ch = wgetch(dialog);
+            match ch {
+                101 | 69 => { // 'e' or 'E' for Edit
+                    delwin(dialog);
+                    delwin(background);
+                    crate::edit_event::edit_event(&self.db, event_id).await?;
+                    self.load_events().await?;
+                    return Ok(());
+                },
+                100 | 68 => { // 'd' or 'D' for Delete
+                    if crate::edit_event::confirm_delete_event() {
+                        let db = self.db.lock().await;
+                        let _ = db.delete_event(event_id).await;
+                        drop(db);
+                        self.load_events().await?;
+                        delwin(dialog);
+                        delwin(background);
+                        return Ok(());
+                    }
+                },
+                _ => {}
+            }
+        }
+        
+        delwin(dialog);
+        delwin(background);
+        
         Ok(())
     }
 }

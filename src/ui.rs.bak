@@ -1,0 +1,264 @@
+    async fn edit_event(&mut self, event_id: i32) -> Result<(), DbError> {
+        // Get the existing event
+        let db = self.db.lock().await;
+        let event = db.get_event(event_id).await?;
+        drop(db);
+        
+        // Create a panel to cover the entire screen (prevents text from showing through)
+        let background = newwin(LINES(), COLS(), 0, 0);
+        wbkgd(background, COLOR_PAIR(COLOR_DEFAULT));
+        wrefresh(background);
+
+        // Create dialog window
+        let height = 14;
+        let width = 70;
+        let starty = (LINES() - height) / 2;
+        let startx = (COLS() - width) / 2;
+        
+        let dialog = newwin(height, width, starty, startx);
+        box_(dialog, 0, 0);
+        wbkgd(dialog, COLOR_PAIR(COLOR_DIALOG));
+        
+        // Dialog title with proper padding
+        mvwprintw(dialog, 1, 2, &format!("Edit Event for {}", event.date));
+        
+        // Labels with clear separation from input areas
+        mvwprintw(dialog, 3, 2, "Title:");
+        mvwprintw(dialog, 5, 2, "Description (optional):");
+        
+        mvwprintw(dialog, height - 2, 2, "Press Enter to save, Esc to cancel, Tab to switch fields");
+        
+        wrefresh(dialog);
+        
+        // Create input fields
+        noecho(); // Don't echo characters automatically
+        curs_set(CURSOR_VISIBILITY::CURSOR_VISIBLE);
+        keypad(dialog, true); // Enable special keys in the dialog window
+        
+        // Initialize with existing event data
+        let mut title = event.title.clone();
+        let mut description = event.description.unwrap_or_default();
+        let mut current_field = 0; // 0 = title, 1 = description
+        let mut desc_scroll: usize = 0;   // Scroll position for description
+        
+        // Define field areas with better spacing and border padding
+        let title_x = 9;
+        let title_y = 3;
+        let title_max_width = width - title_x - 3; // Leave 3 chars for right border padding
+        
+        let desc_x = 4; // Start at the beginning of the line with padding
+        let desc_y = 6; // One line below the label
+        let desc_max_width = width - desc_x - 3; // Leave 3 chars for right border padding
+        let desc_visible_lines = 4; // Increased visible lines
+        
+        // Function to wrap text to fit within width
+        let wrap_text = |text: &str, max_width: usize| -> Vec<String> {
+            let mut lines = Vec::new();
+            let mut current_line = String::new();
+            
+            for word in text.split_whitespace() {
+                if current_line.len() + word.len() + 1 > max_width {
+                    lines.push(current_line);
+                    current_line = word.to_string();
+                } else {
+                    if !current_line.is_empty() {
+                        current_line.push(' ');
+                    }
+                    current_line.push_str(word);
+                }
+            }
+            
+            if !current_line.is_empty() {
+                lines.push(current_line);
+            }
+            
+            // Handle empty text
+            if lines.is_empty() {
+                lines.push(String::new());
+            }
+            
+            lines
+        };
+        
+        loop {
+            // Clear and redraw the input fields
+            if current_field == 0 {
+                // Title field active
+                wattron(dialog, A_BOLD());
+                
+                // Clear title field
+                for i in 0..title_max_width {
+                    mvwaddch(dialog, title_y, title_x + i, ' ' as u32);
+                }
+                
+                // Display title (single line only for title)
+                let display_len = title.len().min(title_max_width as usize);
+                mvwprintw(dialog, title_y, title_x, &title[0..display_len]);
+                
+                wattroff(dialog, A_BOLD());
+                
+                // Position cursor at end of title (or at max width)
+                let cursor_pos = title.len().min(title_max_width as usize);
+                wmove(dialog, title_y, title_x + cursor_pos as i32);
+            } else {
+                // Description field active
+                wattron(dialog, A_BOLD());
+                
+                // Clear description field area
+                for y in 0..desc_visible_lines {
+                    for x in 0..desc_max_width {
+                        mvwaddch(dialog, desc_y + y, desc_x + x, ' ' as u32);
+                    }
+                }
+                
+                // Split description into wrapped lines
+                let mut all_lines = Vec::new();
+                for line in description.split('\n') {
+                    let wrapped = wrap_text(line, desc_max_width as usize);
+                    all_lines.extend(wrapped);
+                    // Add empty line for explicit newlines (except at the end)
+                    if !line.is_empty() && line != description.split('\n').last().unwrap() {
+                        all_lines.push(String::new());
+                    }
+                }
+                
+                // Display description with scrolling
+                let desc_visible_lines_usize = desc_visible_lines as usize;
+                
+                for (i, line) in all_lines.iter().enumerate().skip(desc_scroll).take(desc_visible_lines_usize) {
+                    mvwprintw(dialog, desc_y + (i - desc_scroll) as i32, desc_x, line);
+                }
+                
+                // Show scroll indicators if needed
+                if desc_scroll > 0 {
+                    mvwprintw(dialog, desc_y, width - 4, "↑");
+                }
+                if all_lines.len() > desc_scroll + desc_visible_lines_usize {
+                    mvwprintw(dialog, desc_y + desc_visible_lines - 1, width - 4, "↓");
+                }
+                
+                wattroff(dialog, A_BOLD());
+                
+                // Position cursor appropriately in description field
+                // Find the current line and position within that line
+                let mut current_pos = 0;
+                let mut current_line_idx = 0;
+                let mut cursor_x = 0;
+                
+                for (i, c) in description.chars().enumerate() {
+                    if i == current_pos {
+                        break;
+                    }
+                    
+                    if c == '\n' {
+                        current_line_idx += 1;
+                        cursor_x = 0;
+                    } else {
+                        cursor_x += 1;
+                        if cursor_x >= desc_max_width as usize {
+                            current_line_idx += 1;
+                            cursor_x = 0;
+                        }
+                    }
+                    
+                    current_pos += 1;
+                }
+                
+                // Ensure cursor is visible (adjust scroll if needed)
+                if current_line_idx < desc_scroll {
+                    desc_scroll = current_line_idx;
+                } else if current_line_idx >= desc_scroll + desc_visible_lines_usize {
+                    desc_scroll = current_line_idx - desc_visible_lines_usize + 1;
+                }
+                
+                // Position cursor
+                let visible_line_idx = current_line_idx - desc_scroll;
+                wmove(dialog, desc_y + visible_line_idx as i32, desc_x + cursor_x as i32);
+            }
+            
+            wrefresh(dialog);
+            
+            let ch = wgetch(dialog);
+            match ch {
+                KEY_ENTER | 10 => break, // Enter key - save and exit
+                27 => {
+                    // Escape key - cancel
+                    delwin(dialog);
+                    delwin(background);
+                    curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
+                    return Ok(());
+                },
+                9 => {
+                    // Tab key - switch fields
+                    current_field = 1 - current_field;
+                },
+                KEY_BACKSPACE | 127 => {
+                    if current_field == 0 && !title.is_empty() {
+                        title.pop();
+                    } else if current_field == 1 && !description.is_empty() {
+                        description.pop();
+                    }
+                },
+                KEY_UP => {
+                    if current_field == 1 && desc_scroll > 0 {
+                        desc_scroll -= 1;
+                    }
+                },
+                KEY_DOWN => {
+                    if current_field == 1 {
+                        // Count total lines after wrapping
+                        let mut line_count = 0;
+                        for line in description.split('\n') {
+                            line_count += wrap_text(line, desc_max_width as usize).len();
+                            if !line.is_empty() && line != description.split('\n').last().unwrap() {
+                                line_count += 1; // For explicit newlines
+                            }
+                        }
+                        
+                        let desc_visible_lines_usize = desc_visible_lines as usize;
+                        if line_count > desc_scroll + desc_visible_lines_usize {
+                            desc_scroll += 1;
+                        }
+                    }
+                },
+                13 => { // Enter key for newline in description
+                    if current_field == 1 {
+                        description.push('\n');
+                    }
+                },
+                _ => {
+                    if ch >= 32 && ch <= 126 {
+                        if current_field == 0 && title.len() < 100 { // Reasonable title length limit
+                            title.push(ch as u8 as char);
+                        } else if current_field == 1 && description.len() < 1000 { // Increased description length limit
+                            description.push(ch as u8 as char);
+                        }
+                    }
+                }
+            }
+        }
+        
+        curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
+        
+        // Update the event
+        let updated_event = Event {
+            id: event.id,
+            title,
+            description: if description.is_empty() { None } else { Some(description) },
+            date: event.date,
+            created_at: event.created_at,
+        };
+        
+        // Save the updated event
+        let db = self.db.lock().await;
+        db.update_event(&updated_event).await?;
+        drop(db);
+        
+        // Reload events to reflect changes
+        self.load_events().await?;
+        
+        delwin(dialog);
+        delwin(background);
+        
+        Ok(())
+    }

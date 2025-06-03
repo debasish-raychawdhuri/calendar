@@ -349,7 +349,7 @@ impl Calendar {
     ///
     /// # Arguments
     /// * `cal` - The calendar to print.
-    pub fn print_one_month(cal: Calendar) {
+    pub fn print_single_month(cal: Calendar) {
         // Print month title
         cal.print_heading_month();
         println!();
