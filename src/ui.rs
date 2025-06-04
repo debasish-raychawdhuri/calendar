@@ -131,12 +131,76 @@ impl CalendarUI {
         // Draw border around the entire screen
         box_(stdscr(), 0, 0);
 
+        // Calculate calendars for previous, current, and next month
+        let prev_cal = cal.prev_month();
+        let next_cal = cal.next_month();
+        
+        // Calculate positions for the three calendars with minimal spacing
+        let cal_width = 28; // Width for each calendar
+        let gap = 3;        // Gap between calendars (3 characters)
+        
+        // Calculate positions to distribute calendars evenly with minimal gaps
+        let total_width = 3 * cal_width + 2 * gap;
+        let start_x = (COLS() - total_width) / 2;
+        
+        let left_x = start_x;
+        let center_x = left_x + cal_width + gap;
+        let right_x = center_x + cal_width + gap;
+        
+        // Draw all three calendars side by side with minimal spacing
+        self.draw_month_calendar(&prev_cal, left_x, false, false);
+        self.draw_month_calendar(&cal, center_x, is_current_month, true);
+        self.draw_month_calendar(&next_cal, right_x, false, false);
+
+        // Print navigation help
+        attron(A_BOLD());
+        mvprintw(
+            LINES() - 2,
+            2,
+            "Arrow keys: Navigate | Enter: View/Add Event | Tab: Switch View | q: Quit",
+        );
+        attroff(A_BOLD());
+
+        // Display events for selected day
+        self.draw_events_panel();
+
+        refresh();
+    }
+    
+    fn draw_month_calendar(&self, cal: &Calendar, start_x: i32, is_current_month: bool, is_selected_month: bool) {
+        let today = Calendar::get_today();
+        let is_today_month = cal.year == today.2 && cal.month == today.1;
+        
+        // Calculate width for each month - use fixed width
+        let width = 28; // Fixed width for consistent layout
+        
         // Print month and year
         let month_name = cal.get_month_name();
         let title = format!("{} {}", month_name, cal.year);
-        attron(COLOR_PAIR(COLOR_HEADER) | A_BOLD());
-        mvprintw(1, (COLS() - title.len() as i32) / 2, &title);
-        attroff(COLOR_PAIR(COLOR_HEADER) | A_BOLD());
+        
+        // Calculate center position for the title within this month's area
+        let title_x = start_x + (width - title.len() as i32) / 2;
+        
+        // Use different color for selected month
+        if is_selected_month {
+            attron(COLOR_PAIR(COLOR_HEADER) | A_BOLD());
+        } else {
+            attron(COLOR_PAIR(COLOR_DEFAULT));
+        }
+        
+        // Clear the entire title area first to ensure clean display
+        for i in 0..width {
+            mvprintw(1, start_x + i, " ");
+        }
+        
+        // Print the title centered in the cleared area
+        mvprintw(1, title_x, &title);
+        
+        if is_selected_month {
+            attroff(COLOR_PAIR(COLOR_HEADER) | A_BOLD());
+        } else {
+            attroff(COLOR_PAIR(COLOR_DEFAULT));
+        }
 
         // Print day names
         let day_names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -146,7 +210,7 @@ impl CalendarUI {
             } else {
                 attron(COLOR_PAIR(COLOR_DEFAULT) | A_BOLD());
             }
-            mvprintw(3, 4 + i as i32 * 4, day);
+            mvprintw(3, start_x + i as i32 * 4, day);
             attroff(if i == 0 { COLOR_PAIR(COLOR_HIGHLIGHT) } else { COLOR_PAIR(COLOR_DEFAULT) } | A_BOLD());
         }
 
@@ -167,7 +231,7 @@ impl CalendarUI {
         let mut day_counter = 1;
         for week in 0..6 {
             for weekday in 0..7 {
-                let x = 4 + weekday * 4;
+                let x = start_x + weekday * 4;
                 let y = 5 + week;
 
                 if week == 0 && weekday < first_day_offset || day_counter > total_days {
@@ -175,9 +239,9 @@ impl CalendarUI {
                     mvprintw(y, x, "   ");
                 } else {
                     // Determine cell color
-                    let is_today = is_current_month && day_counter == today.0;
-                    let is_selected = day_counter == self.selected_day;
-                    let has_event = self.has_event(day_counter);
+                    let is_today = is_today_month && day_counter == today.0;
+                    let is_selected = is_selected_month && day_counter == self.selected_day;
+                    let has_event = is_selected_month && self.has_event(day_counter);
 
                     let color = if is_selected && is_today {
                         COLOR_SELECTED_TODAY
@@ -207,20 +271,6 @@ impl CalendarUI {
                 }
             }
         }
-
-        // Print navigation help
-        attron(A_BOLD());
-        mvprintw(
-            LINES() - 2,
-            2,
-            "Arrow keys: Navigate | Enter: View/Add Event | Tab: Switch View | q: Quit",
-        );
-        attroff(A_BOLD());
-
-        // Display events for selected day
-        self.draw_events_panel();
-
-        refresh();
     }
 
     fn draw_events_panel(&self) {
@@ -262,7 +312,14 @@ impl CalendarUI {
                     attron(A_BOLD());
                 }
                 
-                mvprintw(5 + i as i32 * 2, panel_x + 2, &event.title);
+                // Truncate title if too long for panel
+                let title_display = if event.title.len() > (panel_width - 4) as usize {
+                    format!("{}...", &event.title[0..(panel_width - 7) as usize])
+                } else {
+                    event.title.clone()
+                };
+                
+                mvprintw(5 + i as i32 * 2, panel_x + 2, &title_display);
                 
                 if is_selected {
                     attroff(COLOR_PAIR(COLOR_SELECTED_EVENT) | A_BOLD());
