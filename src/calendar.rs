@@ -280,7 +280,7 @@ impl Calendar {
 
     fn print_heading_month(&self) {
         let name_length = self.get_month_name().len();
-        let box_width = 32; // Width of the box (including borders)
+        let box_width = 30; // Width of the box (including borders)
         let empty_space_left = (box_width - name_length) / 2;
         let empty_space_right = box_width - name_length - empty_space_left;
         print!(
@@ -307,41 +307,41 @@ impl Calendar {
         println!();
 
         // Print top borders
-        print!("┌──────────────────────────────┐");
-        print!("  ");
-        print!("┌──────────────────────────────┐");
-        print!("  ");
-        print!("┌──────────────────────────────┐");
-        println!();
-
+        // print!("┌──────────────────────────────┐");
+        // print!("  ");
+        // print!("┌──────────────────────────────┐");
+        // print!("  ");
+        // print!("┌──────────────────────────────┐");
+        // println!();
+        //
         // Print day names
-        print!("│ ");
+        print!(" ");
         cal1.print_day_names();
-        print!(" │  │ ");
+        print!("    ");
         cal2.print_day_names();
-        print!(" │  │ ");
+        print!("    ");
         cal3.print_day_names();
-        print!(" │");
+        print!(" ");
         println!();
 
         // Print calendar lines
         for i in 0..6 {
-            print!("│ ");
+            print!(" ");
             cal1.print_line(i);
-            print!(" │  │ ");
+            print!("    ");
             cal2.print_line(i);
-            print!(" │  │ ");
+            print!("    ");
             cal3.print_line(i);
-            print!(" │");
+            print!(" ");
             println!();
         }
 
         // Print bottom borders
-        print!("└──────────────────────────────┘");
-        print!("  ");
-        print!("└──────────────────────────────┘");
-        print!("  ");
-        print!("└──────────────────────────────┘");
+        //print!("└──────────────────────────────┘");
+        //print!("  ");
+        //print!("└──────────────────────────────┘");
+        //print!("  ");
+        //print!("└──────────────────────────────┘");
         println!();
     }
 
@@ -444,14 +444,14 @@ impl Calendar {
         Self::print_year_heading(self.year);
         Self::print_three_calendars(prev_month, self, next_month);
     }
-    
+
     /// Prints just a single month calendar
     pub fn print_one_month(cal: Calendar) {
         Self::print_year_heading(cal.year);
-        
+
         // Print top border
         println!("┌──────────────────────────────┐");
-        
+
         // Print month name
         print!("│");
         let month_name = cal.get_month_name();
@@ -460,13 +460,13 @@ impl Calendar {
         print!("{}", month_name);
         print!("{}", Self::spaces(26 - month_name.len() - padding));
         println!("│");
-        
+
         // Print day names
         print!("│ ");
         cal.print_day_names();
         print!(" │");
         println!();
-        
+
         // Print calendar lines
         for i in 0..6 {
             print!("│ ");
@@ -474,7 +474,7 @@ impl Calendar {
             print!(" │");
             println!();
         }
-        
+
         // Print bottom border
         println!("└──────────────────────────────┘");
     }
