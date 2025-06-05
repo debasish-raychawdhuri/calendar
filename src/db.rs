@@ -19,6 +19,9 @@ pub enum DbError {
     
     #[error("Failed to create database directory: {0}")]
     DirectoryCreationError(String),
+    
+    #[error("Other error: {0}")]
+    Other(String),
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

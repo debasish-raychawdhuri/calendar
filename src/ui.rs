@@ -1,5 +1,6 @@
 use crate::calendar::{Calendar, DayOfWeek};
 use crate::db::{Database, DbError, Event};
+use crate::google_calendar::{GoogleCalendarClient, GoogleCredentials};
 use chrono::NaiveDate;
 use ncurses::*;
 use std::sync::Arc;
@@ -31,10 +32,17 @@ pub struct CalendarUI {
     events_cache: Vec<Event>,
     view_mode: ViewMode,
     selected_event_index: usize,
+    google_client: Option<GoogleCalendarClient>,
 }
 impl CalendarUI {
     pub fn new(db: Arc<Mutex<Database>>) -> Self {
         let today = Calendar::get_today();
+        
+        // Try to load Google credentials and create client
+        let google_client = GoogleCredentials::load().map(|creds| {
+            GoogleCalendarClient::new(&creds.client_id, &creds.client_secret)
+        });
+        
         CalendarUI {
             db,
             current_year: today.2,
@@ -43,6 +51,7 @@ impl CalendarUI {
             events_cache: Vec::new(),
             view_mode: ViewMode::Calendar,
             selected_event_index: 0,
+            google_client,
         }
     }
 
@@ -157,7 +166,7 @@ impl CalendarUI {
         mvprintw(
             LINES() - 2,
             2,
-            "Arrow keys: Navigate | Enter: View/Add Event | Tab: Switch View | q: Quit",
+            "Arrow keys: Navigate | Enter: Add | Tab: Events | G: Google | q: Quit",
         );
         attroff(A_BOLD());
 
@@ -547,6 +556,9 @@ impl CalendarUI {
                 
                 self.load_events().await?;
             }
+            103 | 71 => { // 'g' or 'G' for Google Calendar
+                self.handle_google_calendar().await?;
+            }
             _ => {}
         }
         
@@ -801,5 +813,28 @@ impl CalendarUI {
         delwin(background);
         
         Ok(())
+    }
+    
+    async fn handle_google_calendar(&mut self) -> Result<(), DbError> {
+        // Create a clone of the necessary data to avoid borrow checker issues
+        let google_client = &mut self.google_client;
+        let db = Arc::clone(&self.db);
+        let year = self.current_year;
+        let month = self.current_month;
+        
+        // Call the Google Calendar handler with the cloned data
+        let result = crate::ui_google::handle_google_calendar(
+            google_client,
+            &db,
+            year,
+            month,
+        ).await;
+        
+        // Reload events after Google Calendar operations
+        if result.is_ok() {
+            self.load_events().await?;
+        }
+        
+        result
     }
 }
