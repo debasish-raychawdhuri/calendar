@@ -297,6 +297,28 @@ impl GoogleCalendarClient {
                     Err(_) => continue,
                 }
             };
+            
+            // Extract start time and duration
+            let (start_time, duration_minutes) = if event["start"]["dateTime"].is_string() && event["end"]["dateTime"].is_string() {
+                let start_datetime = match DateTime::parse_from_rfc3339(event["start"]["dateTime"].as_str().unwrap()) {
+                    Ok(dt) => dt.with_timezone(&Utc),
+                    Err(_) => continue,
+                };
+                
+                let end_datetime = match DateTime::parse_from_rfc3339(event["end"]["dateTime"].as_str().unwrap()) {
+                    Ok(dt) => dt.with_timezone(&Utc),
+                    Err(_) => continue,
+                };
+                
+                let duration = end_datetime.signed_duration_since(start_datetime);
+                let duration_minutes = duration.num_minutes() as i32;
+                
+                // Store the time in UTC
+                (Some(start_datetime.time()), Some(duration_minutes))
+            } else {
+                // All-day event
+                (None, None)
+            };
 
             // Create our Event object
             let calendar_event = Event {
@@ -307,6 +329,8 @@ impl GoogleCalendarClient {
                     .to_string(),
                 description: event["description"].as_str().map(|s| s.to_string()),
                 date: event_date,
+                start_time,
+                duration_minutes,
                 created_at: None,
             };
 

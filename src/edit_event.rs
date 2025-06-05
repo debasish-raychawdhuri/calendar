@@ -1,5 +1,5 @@
 use crate::db::{Database, DbError, Event};
-use chrono::NaiveDate;
+use chrono::{Local, NaiveDate, NaiveTime, TimeZone, Utc};
 use ncurses::*;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -13,7 +13,11 @@ pub async fn show_event_dialog(
     // If editing an existing event, get its data
     let mut title = String::new();
     let mut description = String::new();
+    let mut start_time_str = String::new();
+    let mut duration_str = String::new();
     let mut created_at = None;
+    let mut start_time = None;
+    let mut duration_minutes = None;
     
     if let Some(id) = event_id {
         let db_lock = db.lock().await;
@@ -23,6 +27,26 @@ pub async fn show_event_dialog(
         title = event.title;
         description = event.description.unwrap_or_default();
         created_at = event.created_at;
+        
+        // Format existing start time if present (convert from UTC to local for display)
+        if let Some(time) = event.start_time {
+            // Create a datetime in UTC
+            let naive_datetime = chrono::NaiveDateTime::new(event.date, time);
+            let utc_datetime = Utc.from_utc_datetime(&naive_datetime);
+            
+            // Convert to local time for display
+            let local_datetime = utc_datetime.with_timezone(&Local);
+            start_time_str = local_datetime.format("%H:%M").to_string();
+            
+            // Keep the original UTC time for storage
+            start_time = Some(time);
+        }
+        
+        // Format existing duration if present
+        if let Some(mins) = event.duration_minutes {
+            duration_str = mins.to_string();
+            duration_minutes = Some(mins);
+        }
     }
     
     // Create a panel to cover the entire screen (prevents text from showing through)
@@ -31,7 +55,7 @@ pub async fn show_event_dialog(
     wrefresh(background);
 
     // Create dialog window
-    let height = 14;
+    let height = 18; // Increased height to accommodate new fields
     let width = 70;
     let starty = (LINES() - height) / 2;
     let startx = (COLS() - width) / 2;
@@ -47,6 +71,8 @@ pub async fn show_event_dialog(
     // Labels with clear separation from input areas
     mvwprintw(dialog, 3, 2, "Title:");
     mvwprintw(dialog, 5, 2, "Description (optional):");
+    mvwprintw(dialog, 10, 2, "Start Time (HH:MM, optional):");
+    mvwprintw(dialog, 12, 2, "Duration (minutes, optional):");
     
     mvwprintw(dialog, height - 2, 2, "Press Enter to save, Esc to cancel, Tab to switch fields");
     
@@ -65,14 +91,26 @@ pub async fn show_event_dialog(
     let desc_x = 4; // Start at the beginning of the line with padding
     let desc_y = 6; // One line below the label
     let desc_max_width = width - desc_x - 3; // Leave 3 chars for right border padding
-    let desc_visible_lines = 4; // Increased visible lines
+    let desc_visible_lines = 3; // Visible lines for description
     
-    let mut current_field = 0; // 0 = title, 1 = description
+    // Increase the time_x value to prevent overwriting the label
+    let time_x = 32; // Increased from 28 to provide more space after the label
+    let time_y = 10; // Line for time input
+    let time_max_width = 5; // HH:MM format
+    
+    // Also adjust duration_x for consistency
+    let duration_x = 32; // Increased from 28 to match time_x
+    let duration_y = 12; // Line for duration input
+    let duration_max_width = 6; // Up to 999 minutes
+    
+    let mut current_field = 0; // 0 = title, 1 = description, 2 = start time, 3 = duration
     let mut desc_scroll: usize = 0;   // Scroll position for description
     
     // Cursor positions for editing
     let mut title_cursor_pos = title.len();
     let mut desc_cursor_pos = description.len();
+    let mut time_cursor_pos = start_time_str.len();
+    let mut duration_cursor_pos = duration_str.len();
     
     // Function to wrap text to fit within width
     let wrap_text = |text: &str, max_width: usize| -> Vec<String> {
@@ -135,36 +173,60 @@ pub async fn show_event_dialog(
         (line_idx, col_idx)
     };
     
+    // Main input loop
     loop {
-        // Clear and redraw the input fields
+        // Clear input areas
+        for x in 0..title_max_width {
+            mvwaddch(dialog, title_y, title_x + x, ' ' as u32);
+        }
+        
+        for y in 0..desc_visible_lines {
+            for x in 0..desc_max_width {
+                mvwaddch(dialog, desc_y + y, desc_x + x, ' ' as u32);
+            }
+        }
+        
+        for x in 0..time_max_width {
+            mvwaddch(dialog, time_y, time_x + x, ' ' as u32);
+        }
+        
+        for x in 0..duration_max_width {
+            mvwaddch(dialog, duration_y, duration_x + x, ' ' as u32);
+        }
+        
+        // Clear field indicators
+        mvwaddch(dialog, title_y, title_x - 2, ' ' as u32);
+        mvwaddch(dialog, desc_y, desc_x - 2, ' ' as u32);
+        mvwaddch(dialog, time_y, time_x - 2, ' ' as u32);
+        mvwaddch(dialog, duration_y, duration_x - 2, ' ' as u32);
+        
+        // Show which field is active with a visual indicator
+        match current_field {
+            0 => { mvwaddch(dialog, title_y, title_x - 2, '>' as u32); },
+            1 => { mvwaddch(dialog, desc_y, desc_x - 2, '>' as u32); },
+            2 => { mvwaddch(dialog, time_y, time_x - 2, '>' as u32); },
+            3 => { mvwaddch(dialog, duration_y, duration_x - 2, '>' as u32); },
+            _ => { }
+        }
+        
+        // Display current field values
         if current_field == 0 {
             // Title field active
-            wattron(dialog, A_BOLD());
-            
-            // Clear title field
-            for i in 0..title_max_width {
-                mvwaddch(dialog, title_y, title_x + i, ' ' as u32);
-            }
-            
-            // Display title (single line only for title)
-            let display_len = title.len().min(title_max_width as usize);
-            mvwprintw(dialog, title_y, title_x, &title[0..display_len]);
-            
-            wattroff(dialog, A_BOLD());
+            wattron(dialog, A_BOLD() | COLOR_PAIR(5)); // Use a distinct color for active field
+            mvwprintw(dialog, title_y, title_x, &title[..title.len().min(title_max_width as usize)]);
+            wattroff(dialog, A_BOLD() | COLOR_PAIR(5));
             
             // Position cursor at the current position
             let cursor_x = title_cursor_pos.min(title_max_width as usize);
             wmove(dialog, title_y, title_x + cursor_x as i32);
         } else {
+            // Title field inactive
+            mvwprintw(dialog, title_y, title_x, &title[..title.len().min(title_max_width as usize)]);
+        }
+        
+        if current_field == 1 {
             // Description field active
-            wattron(dialog, A_BOLD());
-            
-            // Clear description field area
-            for y in 0..desc_visible_lines {
-                for x in 0..desc_max_width {
-                    mvwaddch(dialog, desc_y + y, desc_x + x, ' ' as u32);
-                }
-            }
+            wattron(dialog, A_BOLD() | COLOR_PAIR(5));
             
             // Split description into wrapped lines
             let mut all_lines = Vec::new();
@@ -172,74 +234,130 @@ pub async fn show_event_dialog(
             let mut char_count = 0;
             
             for line in description.split('\n') {
-                if !line.is_empty() {
-                    let wrapped = wrap_text(line, desc_max_width as usize);
-                    all_lines.extend(wrapped);
-                    
-                    // Track character positions for cursor placement
-                    for c in line.chars() {
-                        char_count += 1;
-                        if char_count >= desc_cursor_pos {
-                            break;
-                        }
-                    }
-                    char_count += 1; // For the newline
-                } else {
-                    all_lines.push(String::new());
-                    char_count += 1; // For the newline
+                let wrapped = wrap_text(line, desc_max_width as usize);
+                for wrapped_line in wrapped {
+                    let line_len = wrapped_line.len();
+                    all_lines.push(wrapped_line);
+                    char_count += line_len + 1; // +1 for the newline
+                    line_breaks.push(char_count);
                 }
-                line_breaks.push(char_count);
             }
             
-            // Display description with scrolling
-            let desc_visible_lines_usize = desc_visible_lines as usize;
-            
-            for (i, line) in all_lines.iter().enumerate().skip(desc_scroll).take(desc_visible_lines_usize) {
-                mvwprintw(dialog, desc_y + (i - desc_scroll) as i32, desc_x, line);
+            // Display visible lines with scrolling
+            let visible_lines = all_lines.len().min(desc_visible_lines as usize);
+            for i in 0..visible_lines {
+                let line_idx = i + desc_scroll;
+                if line_idx < all_lines.len() {
+                    mvwprintw(dialog, desc_y + i as i32, desc_x, &all_lines[line_idx]);
+                }
             }
             
-            // Show scroll indicators if needed
-            if desc_scroll > 0 {
-                mvwprintw(dialog, desc_y, width - 4, "↑");
-            }
-            if all_lines.len() > desc_scroll + desc_visible_lines_usize {
-                mvwprintw(dialog, desc_y + desc_visible_lines - 1, width - 4, "↓");
-            }
-            
-            wattroff(dialog, A_BOLD());
-            
-            // Calculate cursor position in the wrapped text
+            // Find cursor position in wrapped text
             let (cursor_line, cursor_col) = find_cursor_position(&description, desc_cursor_pos, desc_max_width as usize);
             
-            // Ensure cursor is visible (adjust scroll if needed)
+            // Adjust scroll position if cursor is outside visible area
             if cursor_line < desc_scroll {
                 desc_scroll = cursor_line;
-            } else if cursor_line >= desc_scroll + desc_visible_lines_usize {
-                desc_scroll = cursor_line - desc_visible_lines_usize + 1;
+            } else if cursor_line >= desc_scroll + desc_visible_lines as usize {
+                desc_scroll = cursor_line - desc_visible_lines as usize + 1;
             }
             
             // Position cursor
-            let visible_line_idx = cursor_line - desc_scroll;
-            wmove(dialog, desc_y + visible_line_idx as i32, desc_x + cursor_col as i32);
+            if cursor_line - desc_scroll < desc_visible_lines as usize {
+                wmove(dialog, desc_y + (cursor_line - desc_scroll) as i32, desc_x + cursor_col as i32);
+            }
+            
+            wattroff(dialog, A_BOLD() | COLOR_PAIR(5));
+        } else {
+            // Description field inactive
+            // Display description text without highlighting
+            let wrapped_lines = wrap_text(&description, desc_max_width as usize);
+            let visible_lines = wrapped_lines.len().min(desc_visible_lines as usize);
+            
+            for i in 0..visible_lines {
+                mvwprintw(dialog, desc_y + i as i32, desc_x, &wrapped_lines[i]);
+            }
         }
+        
+        // Display time field
+        if current_field == 2 {
+            // Time field active
+            wattron(dialog, A_BOLD() | COLOR_PAIR(5));
+            mvwprintw(dialog, time_y, time_x, &start_time_str);
+            wattroff(dialog, A_BOLD() | COLOR_PAIR(5));
+            
+            // Position cursor
+            wmove(dialog, time_y, time_x + time_cursor_pos as i32);
+        } else {
+            // Time field inactive
+            mvwprintw(dialog, time_y, time_x, &start_time_str);
+        }
+        
+        // Display duration field
+        if current_field == 3 {
+            // Duration field active
+            wattron(dialog, A_BOLD() | COLOR_PAIR(5));
+            mvwprintw(dialog, duration_y, duration_x, &duration_str);
+            wattroff(dialog, A_BOLD() | COLOR_PAIR(5));
+            
+            // Position cursor
+            wmove(dialog, duration_y, duration_x + duration_cursor_pos as i32);
+        } else {
+            // Duration field inactive
+            mvwprintw(dialog, duration_y, duration_x, &duration_str);
+        }
+        
+        // Display field name in status bar
+        let field_name = match current_field {
+            0 => "Title",
+            1 => "Description",
+            2 => "Start Time (HH:MM format)",
+            3 => "Duration (minutes)",
+            _ => "",
+        };
+        
+        // Clear status line
+        for x in 0..(width - 4) {
+            mvwaddch(dialog, height - 3, 2 + x, ' ' as u32);
+        }
+        
+        // Show current field in status line
+        mvwprintw(dialog, height - 3, 2, &format!("Editing: {}", field_name));
         
         wrefresh(dialog);
         
+        // Only show cursor for the active field
+        if current_field == 0 {
+            wmove(dialog, title_y, title_x + title_cursor_pos.min(title_max_width as usize) as i32);
+        } else if current_field == 2 {
+            wmove(dialog, time_y, time_x + time_cursor_pos as i32);
+        } else if current_field == 3 {
+            wmove(dialog, duration_y, duration_x + duration_cursor_pos as i32);
+        }
+        
+        // Get user input
         let ch = wgetch(dialog);
+        
         match ch {
-            KEY_ENTER | 10 => break, // Enter key - save and exit
-            27 => {
-                // Escape key - cancel
+            KEY_ENTER | 10 | 13 => { // Enter key
+                // Save the event and exit
+                break;
+            },
+            27 => { // Escape key
+                // Cancel and exit
                 delwin(dialog);
                 delwin(background);
-                curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
                 return Ok(None);
             },
-            9 => {
-                // Tab key - switch fields
-                current_field = 1 - current_field;
+            9 => { // Tab key
+                // Switch to next field
+                current_field = (current_field + 1) % 4;
             },
-            KEY_BACKSPACE | 127 => {
+            KEY_BTAB => { // Shift+Tab
+                // Switch to previous field
+                current_field = (current_field + 3) % 4;
+            },
+            KEY_BACKSPACE | 127 => { // Backspace key
                 if current_field == 0 && !title.is_empty() && title_cursor_pos > 0 {
                     // Remove character before cursor in title
                     title_cursor_pos -= 1;
@@ -248,6 +366,14 @@ pub async fn show_event_dialog(
                     // Remove character before cursor in description
                     desc_cursor_pos -= 1;
                     description.remove(desc_cursor_pos);
+                } else if current_field == 2 && !start_time_str.is_empty() && time_cursor_pos > 0 {
+                    // Remove character before cursor in time
+                    time_cursor_pos -= 1;
+                    start_time_str.remove(time_cursor_pos);
+                } else if current_field == 3 && !duration_str.is_empty() && duration_cursor_pos > 0 {
+                    // Remove character before cursor in duration
+                    duration_cursor_pos -= 1;
+                    duration_str.remove(duration_cursor_pos);
                 }
             },
             KEY_DC => { // Delete key
@@ -257,6 +383,12 @@ pub async fn show_event_dialog(
                 } else if current_field == 1 && !description.is_empty() && desc_cursor_pos < description.len() {
                     // Remove character at cursor in description
                     description.remove(desc_cursor_pos);
+                } else if current_field == 2 && !start_time_str.is_empty() && time_cursor_pos < start_time_str.len() {
+                    // Remove character at cursor in time
+                    start_time_str.remove(time_cursor_pos);
+                } else if current_field == 3 && !duration_str.is_empty() && duration_cursor_pos < duration_str.len() {
+                    // Remove character at cursor in duration
+                    duration_str.remove(duration_cursor_pos);
                 }
             },
             KEY_LEFT => {
@@ -264,6 +396,10 @@ pub async fn show_event_dialog(
                     title_cursor_pos -= 1;
                 } else if current_field == 1 && desc_cursor_pos > 0 {
                     desc_cursor_pos -= 1;
+                } else if current_field == 2 && time_cursor_pos > 0 {
+                    time_cursor_pos -= 1;
+                } else if current_field == 3 && duration_cursor_pos > 0 {
+                    duration_cursor_pos -= 1;
                 }
             },
             KEY_RIGHT => {
@@ -271,6 +407,10 @@ pub async fn show_event_dialog(
                     title_cursor_pos += 1;
                 } else if current_field == 1 && desc_cursor_pos < description.len() {
                     desc_cursor_pos += 1;
+                } else if current_field == 2 && time_cursor_pos < start_time_str.len() {
+                    time_cursor_pos += 1;
+                } else if current_field == 3 && duration_cursor_pos < duration_str.len() {
+                    duration_cursor_pos += 1;
                 }
             },
             KEY_UP => {
@@ -278,86 +418,88 @@ pub async fn show_event_dialog(
                     // Find the previous line's equivalent position
                     let mut prev_line_start = 0;
                     let mut current_line_start = 0;
-                    let mut found = false;
+                    let mut current_pos = 0;
                     
-                    for (i, c) in description.char_indices() {
-                        if i >= desc_cursor_pos {
+                    for (i, c) in description.chars().enumerate() {
+                        if i == desc_cursor_pos {
                             break;
                         }
+                        
                         if c == '\n' {
                             prev_line_start = current_line_start;
                             current_line_start = i + 1;
-                            found = true;
                         }
+                        
+                        current_pos += 1;
                     }
                     
-                    if found {
+                    if current_line_start > 0 {
                         // Calculate position in previous line
-                        let current_offset = desc_cursor_pos - current_line_start;
-                        let prev_line_length = current_line_start - prev_line_start - 1;
-                        desc_cursor_pos = prev_line_start + current_offset.min(prev_line_length);
-                    } else if desc_scroll > 0 {
-                        desc_scroll -= 1;
+                        let offset = desc_cursor_pos - current_line_start;
+                        let prev_line_length = current_line_start - prev_line_start - 1; // -1 for newline
+                        
+                        desc_cursor_pos = prev_line_start + offset.min(prev_line_length);
                     }
+                } else if current_field == 0 {
+                    // Move to the last field when pressing up from the first field
+                    current_field = 3;
                 }
             },
             KEY_DOWN => {
                 if current_field == 1 {
                     // Find the next line's equivalent position
-                    let mut current_line_start = 0;
+                    let mut line_start = 0;
+                    let mut found_cursor = false;
                     let mut next_line_start = description.len();
-                    let mut found = false;
                     
-                    for (i, c) in description.char_indices() {
-                        if i < desc_cursor_pos && c == '\n' {
-                            current_line_start = i + 1;
-                        } else if i >= desc_cursor_pos && c == '\n' {
-                            next_line_start = i + 1;
-                            found = true;
-                            break;
-                        }
-                    }
-                    
-                    if found {
-                        // Calculate position in next line
-                        let current_offset = desc_cursor_pos - current_line_start;
-                        let next_line_length = if description[next_line_start..].contains('\n') {
-                            description[next_line_start..].find('\n').unwrap()
-                        } else {
-                            description.len() - next_line_start
-                        };
-                        desc_cursor_pos = next_line_start + current_offset.min(next_line_length);
-                    } else {
-                        // Count total lines after wrapping
-                        let mut line_count = 0;
-                        for line in description.split('\n') {
-                            line_count += wrap_text(line, desc_max_width as usize).len();
-                            if !line.is_empty() && line != description.split('\n').last().unwrap() {
-                                line_count += 1; // For explicit newlines
-                            }
+                    for (i, c) in description.chars().enumerate() {
+                        if i == desc_cursor_pos {
+                            found_cursor = true;
                         }
                         
-                        let desc_visible_lines_usize = desc_visible_lines as usize;
-                        if line_count > desc_scroll + desc_visible_lines_usize {
-                            desc_scroll += 1;
+                        if c == '\n' {
+                            if !found_cursor {
+                                line_start = i + 1;
+                            } else {
+                                next_line_start = i + 1;
+                                break;
+                            }
                         }
                     }
-                }
-            },
-            13 => { // Enter key for newline in description
-                if current_field == 1 {
-                    description.insert(desc_cursor_pos, '\n');
-                    desc_cursor_pos += 1;
+                    
+                    if found_cursor && next_line_start < description.len() {
+                        // Calculate position in next line
+                        let offset = desc_cursor_pos - line_start;
+                        let next_line_length = description[next_line_start..].find('\n')
+                            .unwrap_or(description.len() - next_line_start);
+                        
+                        desc_cursor_pos = next_line_start + offset.min(next_line_length);
+                    }
                 }
             },
             _ => {
                 if ch >= 32 && ch <= 126 {
+                    // Regular character input
                     if current_field == 0 && title.len() < 100 { // Reasonable title length limit
                         title.insert(title_cursor_pos, ch as u8 as char);
                         title_cursor_pos += 1;
                     } else if current_field == 1 && description.len() < 1000 { // Increased description length limit
                         description.insert(desc_cursor_pos, ch as u8 as char);
                         desc_cursor_pos += 1;
+                    } else if current_field == 2 && start_time_str.len() < 5 { // HH:MM format
+                        // Only allow digits and colon for time
+                        let c = ch as u8 as char;
+                        if (c.is_digit(10) || c == ':') && start_time_str.len() < time_max_width as usize {
+                            start_time_str.insert(time_cursor_pos, c);
+                            time_cursor_pos += 1;
+                        }
+                    } else if current_field == 3 && duration_str.len() < 6 { // Up to 999 minutes
+                        // Only allow digits for duration
+                        let c = ch as u8 as char;
+                        if c.is_digit(10) && duration_str.len() < duration_max_width as usize {
+                            duration_str.insert(duration_cursor_pos, c);
+                            duration_cursor_pos += 1;
+                        }
                     }
                 }
             }
@@ -366,42 +508,55 @@ pub async fn show_event_dialog(
     
     curs_set(CURSOR_VISIBILITY::CURSOR_INVISIBLE);
     
+    // Parse time and duration
+    if !start_time_str.is_empty() {
+        // Try to parse the time string as local time
+        if let Ok(local_time) = NaiveTime::parse_from_str(&format!("{}:00", start_time_str), "%H:%M:%S") {
+            // Create a datetime in the local timezone
+            let local_date = Local::now().date_naive();
+            let local_datetime = chrono::NaiveDateTime::new(local_date, local_time);
+            let local_dt = Local.from_local_datetime(&local_datetime).unwrap();
+            
+            // Convert to UTC for storage
+            let utc_dt = local_dt.with_timezone(&Utc);
+            start_time = Some(utc_dt.time());
+        }
+    }
+    
+    if !duration_str.is_empty() {
+        // Try to parse the duration string
+        duration_minutes = duration_str.parse::<i32>().ok();
+    }
+    
     // Create or update the event
     let event = Event {
         id: event_id,
         title,
         description: if description.is_empty() { None } else { Some(description) },
         date,
+        start_time,
+        duration_minutes,
         created_at,
     };
     
     delwin(dialog);
     delwin(background);
     
-    Ok(Some(event))
-}
-
-// Function to edit an existing event
-pub async fn edit_event(
-    db: &Arc<Mutex<Database>>,
-    event_id: i32,
-) -> Result<(), DbError> {
-    // Get the existing event
+    // Save the event to the database
     let db_lock = db.lock().await;
-    let event = db_lock.get_event(event_id).await?;
-    let date = event.date;
-    drop(db_lock);
     
-    // Show dialog to edit the event
-    if let Some(updated_event) = show_event_dialog(db, date, Some(event_id)).await? {
-        // Save the updated event
-        let db_lock = db.lock().await;
-        db_lock.update_event(&updated_event).await?;
+    if let Some(id) = event_id {
+        // Update existing event
+        db_lock.update_event(&event).await?;
+        Ok(Some(event))
+    } else {
+        // Create new event
+        let id = db_lock.add_event(&event).await?;
+        let mut event = event;
+        event.id = Some(id);
+        Ok(Some(event))
     }
-    
-    Ok(())
 }
-
 // Function to confirm deletion of an event
 pub fn confirm_delete_event() -> bool {
     // Create a panel to cover the entire screen
@@ -409,8 +564,8 @@ pub fn confirm_delete_event() -> bool {
     wbkgd(background, COLOR_PAIR(1)); // COLOR_DEFAULT
     wrefresh(background);
     
-    // Create dialog window
-    let height = 6;
+    // Create confirmation dialog
+    let height = 7;
     let width = 50;
     let starty = (LINES() - height) / 2;
     let startx = (COLS() - width) / 2;
@@ -421,16 +576,28 @@ pub fn confirm_delete_event() -> bool {
     
     // Dialog content
     mvwprintw(dialog, 1, 2, "Confirm Delete");
-    mvwprintw(dialog, 2, 2, "Are you sure you want to delete this event?");
-    mvwprintw(dialog, 4, 2, "Press Y to confirm, any other key to cancel");
+    mvwprintw(dialog, 3, 2, "Are you sure you want to delete this event?");
+    mvwprintw(dialog, 5, 2, "Press Y to confirm, any other key to cancel");
     
     wrefresh(dialog);
     
-    // Wait for key press
+    // Get user input
+    keypad(dialog, true);
     let ch = wgetch(dialog);
     
+    // Clean up
     delwin(dialog);
     delwin(background);
     
+    // Return true if user confirmed with 'y' or 'Y'
     ch == 'y' as i32 || ch == 'Y' as i32
+}
+
+// Alias for show_event_dialog for backward compatibility
+pub async fn edit_event(db: &Arc<Mutex<Database>>, event_id: i32) -> Result<Option<Event>, DbError> {
+    let db_lock = db.lock().await;
+    let event = db_lock.get_event(event_id).await?;
+    drop(db_lock);
+    
+    show_event_dialog(db, event.date, Some(event_id)).await
 }

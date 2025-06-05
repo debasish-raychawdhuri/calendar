@@ -1,7 +1,7 @@
 use crate::calendar::{Calendar, DayOfWeek};
 use crate::db::{Database, DbError, Event};
 use crate::google_calendar::{GoogleCalendarClient, GoogleCredentials};
-use chrono::NaiveDate;
+use chrono::{DateTime, Datelike, Local, NaiveDate, NaiveTime, TimeZone, Utc};
 use ncurses::*;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -321,11 +321,35 @@ impl CalendarUI {
                     attron(A_BOLD());
                 }
                 
-                // Truncate title if too long for panel
-                let title_display = if event.title.len() > (panel_width - 4) as usize {
-                    format!("{}...", &event.title[0..(panel_width - 7) as usize])
+                // Format event title with time if available
+                let display_title = if let Some(start_time) = &event.start_time {
+                    // Convert UTC time to local time for display
+                    let naive_datetime = chrono::NaiveDateTime::new(event.date, *start_time);
+                    let utc_datetime = Utc.from_utc_datetime(&naive_datetime);
+                    let local_datetime = utc_datetime.with_timezone(&Local);
+                    
+                    // Format the time in local timezone
+                    let time_str = local_datetime.format("%H:%M").to_string();
+                    
+                    // Add duration if available
+                    let duration_str = if let Some(duration) = event.duration_minutes {
+                        let end_time = utc_datetime + chrono::Duration::minutes(duration as i64);
+                        let local_end_time = end_time.with_timezone(&Local);
+                        format!(" - {}", local_end_time.format("%H:%M"))
+                    } else {
+                        String::new()
+                    };
+                    
+                    format!("{}{}: {}", time_str, duration_str, event.title)
                 } else {
                     event.title.clone()
+                };
+                
+                // Truncate title if too long for panel
+                let title_display = if display_title.len() > (panel_width - 4) as usize {
+                    format!("{}...", &display_title[0..(panel_width - 7) as usize])
+                } else {
+                    display_title
                 };
                 
                 mvprintw(5 + i as i32 * 2, panel_x + 2, &title_display);
@@ -643,6 +667,30 @@ impl CalendarUI {
         mvwprintw(dialog, 1, 2, "Event Details");
         mvwprintw(dialog, 3, 2, &format!("Date: {}", event.date));
         
+        // Display time information if available
+        let mut time_info_y = 4;
+        if let Some(start_time) = event.start_time {
+            // Convert UTC time to local time for display
+            let naive_datetime = chrono::NaiveDateTime::new(event.date, start_time);
+            let utc_datetime = Utc.from_utc_datetime(&naive_datetime);
+            let local_datetime = utc_datetime.with_timezone(&Local);
+            
+            // Format the time in local timezone
+            let time_str = local_datetime.format("%H:%M").to_string();
+            
+            // Add duration if available
+            let time_display = if let Some(duration) = event.duration_minutes {
+                let end_time = utc_datetime + chrono::Duration::minutes(duration as i64);
+                let local_end_time = end_time.with_timezone(&Local);
+                format!("Time: {} - {} ({}m)", time_str, local_end_time.format("%H:%M"), duration)
+            } else {
+                format!("Time: {}", time_str)
+            };
+            
+            mvwprintw(dialog, time_info_y, 2, &time_display);
+            time_info_y += 1;
+        }
+        
         // Function to wrap text to fit within width
         let wrap_text = |text: &str, max_width: usize| -> Vec<String> {
             let mut lines = Vec::new();
@@ -677,13 +725,13 @@ impl CalendarUI {
         let title_wrapped = wrap_text(&event.title, title_max_width as usize);
         
         // Display title (potentially multi-line)
-        mvwprintw(dialog, 4, 2, "Title:");
+        mvwprintw(dialog, time_info_y, 2, "Title:");
         for (i, line) in title_wrapped.iter().enumerate() {
-            mvwprintw(dialog, 4 + i as i32, 9, line);
+            mvwprintw(dialog, time_info_y + i as i32, 9, line);
         }
         
         // Adjust starting position for description based on title height
-        let desc_start_y = 4 + title_wrapped.len() as i32 + 1;
+        let desc_start_y = time_info_y + title_wrapped.len() as i32 + 1;
         
         // Action buttons at the bottom
         mvwprintw(dialog, height - 3, 2, "[E]dit | [D]elete | Any other key: Close");

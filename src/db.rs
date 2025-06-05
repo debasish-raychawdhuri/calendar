@@ -1,4 +1,4 @@
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::{DateTime, Local, NaiveDate, NaiveTime, TimeZone, Utc};
 use directories::ProjectDirs;
 use rusqlite::{params, Connection, Result as SqliteResult};
 use serde::{Deserialize, Serialize};
@@ -30,6 +30,8 @@ pub struct Event {
     pub title: String,
     pub description: Option<String>,
     pub date: NaiveDate,
+    pub start_time: Option<NaiveTime>,  // Start time of the event
+    pub duration_minutes: Option<i32>,  // Duration in minutes
     pub created_at: Option<DateTime<Utc>>,
 }
 
@@ -65,6 +67,8 @@ impl Database {
                 title TEXT NOT NULL,
                 description TEXT,
                 date TEXT NOT NULL,
+                start_time TEXT,
+                duration_minutes INTEGER,
                 created_at TEXT NOT NULL
             )",
             [],
@@ -77,12 +81,16 @@ impl Database {
         let now = Utc::now();
         let created_at = event.created_at.unwrap_or(now);
         
+        // Store time in UTC format
         self.conn.execute(
-            "INSERT INTO events (title, description, date, created_at) VALUES (?1, ?2, ?3, ?4)",
+            "INSERT INTO events (title, description, date, start_time, duration_minutes, created_at) 
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
                 event.title,
                 event.description,
                 event.date.to_string(),
+                event.start_time.map(|t| t.format("%H:%M:%S").to_string()),
+                event.duration_minutes,
                 created_at.to_rfc3339()
             ],
         ).map_err(DbError::DatabaseError)?;
@@ -95,11 +103,13 @@ impl Database {
         let id = event.id.ok_or(DbError::EventNotFound)?;
         
         let rows_affected = self.conn.execute(
-            "UPDATE events SET title = ?1, description = ?2, date = ?3 WHERE id = ?4",
+            "UPDATE events SET title = ?1, description = ?2, date = ?3, start_time = ?4, duration_minutes = ?5 WHERE id = ?6",
             params![
                 event.title,
                 event.description,
                 event.date.to_string(),
+                event.start_time.map(|t| t.format("%H:%M:%S").to_string()),
+                event.duration_minutes,
                 id
             ],
         ).map_err(DbError::DatabaseError)?;
@@ -126,7 +136,7 @@ impl Database {
     
     pub async fn get_event(&self, id: i32) -> Result<Event, DbError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, title, description, date, created_at FROM events WHERE id = ?1"
+            "SELECT id, title, description, date, created_at, start_time, duration_minutes FROM events WHERE id = ?1"
         ).map_err(DbError::DatabaseError)?;
         
         let event = stmt.query_row(params![id], |row| {
@@ -140,11 +150,18 @@ impl Database {
                 .map(|dt| dt.with_timezone(&Utc))
                 .map_err(|_| rusqlite::Error::InvalidParameterName("Invalid datetime format".to_string()))?;
             
+            let start_time_str: Option<String> = row.get(5)?;
+            let start_time = start_time_str.and_then(|s| NaiveTime::parse_from_str(&s, "%H:%M:%S").ok());
+            
+            let duration_minutes: Option<i32> = row.get(6)?;
+            
             Ok(Event {
                 id: Some(row.get(0)?),
                 title: row.get(1)?,
                 description: row.get(2)?,
                 date,
+                start_time,
+                duration_minutes,
                 created_at: Some(created_at),
             })
         });
@@ -158,7 +175,7 @@ impl Database {
     
     pub async fn get_events_for_date(&self, date: NaiveDate) -> Result<Vec<Event>, DbError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, title, description, date, created_at FROM events WHERE date = ?1"
+            "SELECT id, title, description, date, created_at, start_time, duration_minutes FROM events WHERE date = ?1"
         ).map_err(DbError::DatabaseError)?;
         
         let date_str = date.to_string();
@@ -173,11 +190,18 @@ impl Database {
                 .map(|dt| dt.with_timezone(&Utc))
                 .map_err(|_| rusqlite::Error::InvalidParameterName("Invalid datetime format".to_string()))?;
             
+            let start_time_str: Option<String> = row.get(5)?;
+            let start_time = start_time_str.and_then(|s| NaiveTime::parse_from_str(&s, "%H:%M:%S").ok());
+            
+            let duration_minutes: Option<i32> = row.get(6)?;
+            
             Ok(Event {
                 id: Some(row.get(0)?),
                 title: row.get(1)?,
                 description: row.get(2)?,
                 date,
+                start_time,
+                duration_minutes,
                 created_at: Some(created_at),
             })
         }).map_err(DbError::DatabaseError)?;
@@ -192,7 +216,7 @@ impl Database {
     
     pub async fn get_events_for_month(&self, year: i32, month: i32) -> Result<Vec<Event>, DbError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, title, description, date, created_at FROM events 
+            "SELECT id, title, description, date, created_at, start_time, duration_minutes FROM events 
              WHERE strftime('%Y', date) = ?1 AND strftime('%m', date) = ?2"
         ).map_err(DbError::DatabaseError)?;
         
@@ -210,11 +234,18 @@ impl Database {
                 .map(|dt| dt.with_timezone(&Utc))
                 .map_err(|_| rusqlite::Error::InvalidParameterName("Invalid datetime format".to_string()))?;
             
+            let start_time_str: Option<String> = row.get(5)?;
+            let start_time = start_time_str.and_then(|s| NaiveTime::parse_from_str(&s, "%H:%M:%S").ok());
+            
+            let duration_minutes: Option<i32> = row.get(6)?;
+            
             Ok(Event {
                 id: Some(row.get(0)?),
                 title: row.get(1)?,
                 description: row.get(2)?,
                 date,
+                start_time,
+                duration_minutes,
                 created_at: Some(created_at),
             })
         }).map_err(DbError::DatabaseError)?;
