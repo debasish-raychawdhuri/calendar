@@ -537,6 +537,7 @@ pub async fn show_event_dialog(
         start_time,
         duration_minutes,
         created_at,
+        google_id: None, // Local events don't have a Google ID
     };
     
     delwin(dialog);

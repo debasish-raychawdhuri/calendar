@@ -255,31 +255,58 @@ impl GoogleCalendarClient {
                 }
             };
 
+        // Get status before consuming the response
+        let status = response.status();
+        println!("Response status: {}", status);
+            
         // Parse the response
         let response_body: Value = response
             .json()
             .await
             .map_err(|e| format!("Failed to parse response: {}", e))?;
-
-        // Extract events
-        let events = response_body["items"]
-            .as_array()
-            .ok_or_else(|| "Invalid response format".to_string())?;
+        
+        // Check if there's an error in the response
+        if response_body.get("error").is_some() {
+            let error_msg = response_body["error"]["message"].as_str()
+                .unwrap_or("Unknown error from Google Calendar API");
+            return Err(format!("Google Calendar API error: {}", error_msg));
+        }
+        
+        // Extract events - handle case where items might not exist
+        let events = match response_body.get("items") {
+            Some(items) => {
+                match items.as_array() {
+                    Some(array) => array,
+                    None => {
+                        println!("Items is not an array: {:?}", items);
+                        return Err("Items field is not an array".to_string());
+                    }
+                }
+            },
+            None => {
+                println!("Response doesn't contain items field: {:?}", response_body);
+                // Return empty list instead of error if no events
+                return Ok(Vec::new());
+            }
+        };
 
         // Convert Google Calendar events to our Event format
         let mut result = Vec::new();
         for event in events {
             // Skip events without a start date/time
-            if !event["start"].is_object() {
+            if !event.get("start").and_then(|s| s.as_object()).is_some() {
+                println!("Skipping event without start object: {:?}", event);
                 continue;
             }
 
             // Get the start date (either dateTime or date field)
-            let start_date_str = if event["start"]["dateTime"].is_string() {
+            let start_date_str = if event.get("start").and_then(|s| s.get("dateTime")).and_then(|dt| dt.as_str()).is_some() {
                 event["start"]["dateTime"].as_str().unwrap()
-            } else if event["start"]["date"].is_string() {
+            } else if event.get("start").and_then(|s| s.get("date")).and_then(|d| d.as_str()).is_some() {
                 event["start"]["date"].as_str().unwrap()
             } else {
+                // Skip events with invalid start date format
+                println!("Skipping event with invalid start date format: {:?}", event);
                 continue;
             };
 
@@ -288,26 +315,42 @@ impl GoogleCalendarClient {
                 // It's a datetime string
                 match DateTime::parse_from_rfc3339(start_date_str) {
                     Ok(dt) => dt.naive_utc().date(),
-                    Err(_) => continue,
+                    Err(e) => {
+                        println!("Failed to parse datetime '{}': {}", start_date_str, e);
+                        continue;
+                    }
                 }
             } else {
                 // It's a date string
                 match NaiveDate::parse_from_str(start_date_str, "%Y-%m-%d") {
                     Ok(date) => date,
-                    Err(_) => continue,
+                    Err(e) => {
+                        println!("Failed to parse date '{}': {}", start_date_str, e);
+                        continue;
+                    }
                 }
             };
             
             // Extract start time and duration
-            let (start_time, duration_minutes) = if event["start"]["dateTime"].is_string() && event["end"]["dateTime"].is_string() {
-                let start_datetime = match DateTime::parse_from_rfc3339(event["start"]["dateTime"].as_str().unwrap()) {
+            let (start_time, duration_minutes) = if event.get("start").and_then(|s| s.get("dateTime")).is_some() && 
+                                                   event.get("end").and_then(|e| e.get("dateTime")).is_some() {
+                let start_datetime_str = event["start"]["dateTime"].as_str().unwrap();
+                let end_datetime_str = event["end"]["dateTime"].as_str().unwrap();
+                
+                let start_datetime = match DateTime::parse_from_rfc3339(start_datetime_str) {
                     Ok(dt) => dt.with_timezone(&Utc),
-                    Err(_) => continue,
+                    Err(e) => {
+                        println!("Failed to parse start datetime '{}': {}", start_datetime_str, e);
+                        continue;
+                    }
                 };
                 
-                let end_datetime = match DateTime::parse_from_rfc3339(event["end"]["dateTime"].as_str().unwrap()) {
+                let end_datetime = match DateTime::parse_from_rfc3339(end_datetime_str) {
                     Ok(dt) => dt.with_timezone(&Utc),
-                    Err(_) => continue,
+                    Err(e) => {
+                        println!("Failed to parse end datetime '{}': {}", end_datetime_str, e);
+                        continue;
+                    }
                 };
                 
                 let duration = end_datetime.signed_duration_since(start_datetime);
@@ -323,15 +366,16 @@ impl GoogleCalendarClient {
             // Create our Event object
             let calendar_event = Event {
                 id: None, // This will be assigned when saved to the database
-                title: event["summary"]
-                    .as_str()
+                title: event.get("summary")
+                    .and_then(|s| s.as_str())
                     .unwrap_or("Untitled Event")
                     .to_string(),
-                description: event["description"].as_str().map(|s| s.to_string()),
+                description: event.get("description").and_then(|s| s.as_str()).map(|s| s.to_string()),
                 date: event_date,
                 start_time,
                 duration_minutes,
                 created_at: None,
+                google_id: event.get("id").and_then(|s| s.as_str()).map(|s| s.to_string()), // Store Google's event ID
             };
 
             result.push(calendar_event);
@@ -352,12 +396,47 @@ impl GoogleCalendarClient {
         // Save events to the database
         let db_lock = db.lock().await;
         let mut count = 0;
+        let mut imported_google_ids = Vec::new();
         
         for event in events {
-            match db_lock.add_event(&event).await {
-                Ok(_) => count += 1,
-                Err(e) => eprintln!("Failed to add event: {:?}", e),
+            // Skip events without Google ID (shouldn't happen, but just in case)
+            let google_id = match &event.google_id {
+                Some(id) => {
+                    imported_google_ids.push(id.clone());
+                    id
+                },
+                None => continue,
+            };
+            
+            // Check if this event already exists in our database
+            match db_lock.find_event_by_google_id(google_id).await {
+                Ok(Some(existing_event)) => {
+                    // Update existing event
+                    let mut updated_event = event.clone();
+                    updated_event.id = existing_event.id;
+                    
+                    match db_lock.update_event(&updated_event).await {
+                        Ok(_) => count += 1,
+                        Err(e) => eprintln!("Failed to update event: {:?}", e),
+                    }
+                },
+                Ok(None) => {
+                    // Add new event
+                    match db_lock.add_event(&event).await {
+                        Ok(_) => count += 1,
+                        Err(e) => eprintln!("Failed to add event: {:?}", e),
+                    }
+                },
+                Err(e) => eprintln!("Error checking for existing event: {:?}", e),
             }
+        }
+        
+        // Delete events that were previously imported from Google but are no longer present
+        match db_lock.delete_missing_google_events(&imported_google_ids).await {
+            Ok(deleted) => {
+                println!("Removed {} events that were deleted from Google Calendar", deleted);
+            },
+            Err(e) => eprintln!("Failed to clean up deleted events: {:?}", e),
         }
         
         Ok(count)

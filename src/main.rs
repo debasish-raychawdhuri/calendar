@@ -44,12 +44,39 @@ struct Args {
     /// Start Google Calendar authentication process
     #[arg(long = "google-auth", action = clap::ArgAction::SetTrue)]
     google_auth: bool,
+    
+    /// Run database migrations
+    #[arg(long = "migrate-db", action = clap::ArgAction::SetTrue)]
+    migrate_db: bool,
+    
+    /// Clean all Google Calendar imported events from the database
+    #[arg(long = "clean-google-events", action = clap::ArgAction::SetTrue)]
+    clean_google_events: bool,
 }
 
 /// Entry point of the calendar application
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
+    
+    // Handle database migrations if requested
+    if args.migrate_db {
+        println!("Running database migrations...");
+        let db = Arc::new(Mutex::new(db::Database::connect(args.db_path.as_deref()).await?));
+        let db_lock = db.lock().await;
+        db_lock.migrate_database().await?;
+        return Ok(());
+    }
+    
+    // Handle cleaning Google Calendar events if requested
+    if args.clean_google_events {
+        println!("Cleaning all Google Calendar imported events...");
+        let db = Arc::new(Mutex::new(db::Database::connect(args.db_path.as_deref()).await?));
+        let db_lock = db.lock().await;
+        let deleted = db_lock.delete_all_google_events().await?;
+        println!("Deleted {} events imported from Google Calendar", deleted);
+        return Ok(());
+    }
     
     // Handle Google Calendar authentication if requested
     if args.google_auth {
