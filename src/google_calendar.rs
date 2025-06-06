@@ -68,6 +68,10 @@ impl GoogleCalendarClient {
                 "https://www.googleapis.com/auth/calendar.readonly".to_string(),
             ))
             .set_pkce_challenge(pkce_challenge)
+            // Add access_type=offline to get a refresh token that persists
+            .add_extra_param("access_type", "offline")
+            // Force approval prompt to ensure we always get a refresh token
+            .add_extra_param("prompt", "consent")
             .url();
 
         println!("Open this URL in your browser: {}", auth_url);
@@ -127,7 +131,7 @@ impl GoogleCalendarClient {
         Ok(())
     }
 
-    async fn refresh_access_token(&mut self) -> Result<(), String> {
+    pub async fn refresh_access_token(&mut self) -> Result<(), String> {
         if let Some(refresh_token) = &self.refresh_token {
             println!("Refreshing access token...");
             
@@ -153,6 +157,8 @@ impl GoogleCalendarClient {
                             _ => format!("Other error: {:?}", e),
                         };
                         
+                        println!("Failed to refresh token: {}", error_details);
+                        println!("You'll need to re-authenticate with Google Calendar.");
                         return Err(format!("Failed to refresh token: {}", error_details));
                     }
                 };
