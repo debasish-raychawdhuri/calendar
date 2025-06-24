@@ -3,17 +3,16 @@
 //! This module provides functionality to authenticate with Outlook Calendar
 //! and import events into the local database.
 
-use crate::db::{Database, DbError, Event};
-use chrono::{DateTime, NaiveDate, NaiveTime, Timelike, Utc};
+use crate::db::{Database, Event};
+use chrono::{NaiveDate, Utc};
 use oauth2::{
     basic::BasicClient, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
     PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope, TokenResponse, TokenUrl,
 };
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::fs::{self, File};
+use std::fs::File;
 use std::io::{Read, Write};
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use url::Url;

@@ -2,7 +2,7 @@ use crate::calendar::{Calendar, DayOfWeek};
 use crate::db::{Database, DbError, Event};
 use crate::google_calendar::{GoogleCalendarClient, GoogleCredentials};
 use crate::outlook_calendar::{OutlookCalendarClient, OutlookCredentials};
-use chrono::{DateTime, Datelike, Local, NaiveDate, NaiveTime, TimeZone, Utc};
+use chrono::{Datelike, Local, NaiveDate, TimeZone, Utc};
 use ncurses::*;
 use std::sync::Arc;
 use tokio::sync::Mutex;

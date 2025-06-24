@@ -1,6 +1,6 @@
-use chrono::{DateTime, Local, NaiveDate, NaiveTime, TimeZone, Utc};
+use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use directories::ProjectDirs;
-use rusqlite::{params, Connection, Result as SqliteResult};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;

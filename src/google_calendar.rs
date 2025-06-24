@@ -1,4 +1,4 @@
-use crate::db::{Database, DbError, Event};
+use crate::db::{Database, Event};
 use chrono::{DateTime, NaiveDate, Utc};
 use oauth2::{
     basic::BasicClient, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
