@@ -34,6 +34,8 @@ pub struct Event {
     pub duration_minutes: Option<i32>,  // Duration in minutes
     pub created_at: Option<DateTime<Utc>>,
     pub google_id: Option<String>,      // Google Calendar event ID for deduplication
+    pub outlook_id: Option<String>,     // Outlook Calendar event ID for deduplication
+    pub source: Option<String>,         // Source of the event: "google", "outlook", or "manual"
 }
 
 pub struct Database {
@@ -70,7 +72,9 @@ impl Database {
                 start_time TEXT,
                 duration_minutes INTEGER,
                 created_at TEXT NOT NULL,
-                google_id TEXT
+                google_id TEXT,
+                outlook_id TEXT,
+                source TEXT
             )",
             [],
         ).map_err(DbError::DatabaseError)?;
@@ -103,6 +107,28 @@ impl Database {
             println!("google_id column already exists");
         }
         
+        // Add outlook_id column if it doesn't exist
+        if !columns.contains(&"outlook_id".to_string()) {
+            println!("Adding outlook_id column to events table");
+            self.conn.execute(
+                "ALTER TABLE events ADD COLUMN outlook_id TEXT;",
+                [],
+            ).map_err(DbError::DatabaseError)?;
+        } else {
+            println!("outlook_id column already exists");
+        }
+        
+        // Add source column if it doesn't exist
+        if !columns.contains(&"source".to_string()) {
+            println!("Adding source column to events table");
+            self.conn.execute(
+                "ALTER TABLE events ADD COLUMN source TEXT;",
+                [],
+            ).map_err(DbError::DatabaseError)?;
+        } else {
+            println!("source column already exists");
+        }
+        
         println!("Migrations completed successfully.");
         Ok(())
     }
@@ -123,8 +149,8 @@ impl Database {
         
         // Store time in UTC format
         self.conn.execute(
-            "INSERT INTO events (title, description, date, start_time, duration_minutes, created_at, google_id) 
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO events (title, description, date, start_time, duration_minutes, created_at, google_id, outlook_id, source) 
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 event.title,
                 event.description,
@@ -132,7 +158,9 @@ impl Database {
                 event.start_time.map(|t| t.format("%H:%M:%S").to_string()),
                 event.duration_minutes,
                 created_at.to_rfc3339(),
-                event.google_id
+                event.google_id,
+                event.outlook_id,
+                event.source
             ],
         ).map_err(DbError::DatabaseError)?;
         
@@ -144,7 +172,7 @@ impl Database {
         let id = event.id.ok_or(DbError::EventNotFound)?;
         
         let rows_affected = self.conn.execute(
-            "UPDATE events SET title = ?1, description = ?2, date = ?3, start_time = ?4, duration_minutes = ?5, google_id = ?6 WHERE id = ?7",
+            "UPDATE events SET title = ?1, description = ?2, date = ?3, start_time = ?4, duration_minutes = ?5, google_id = ?6, outlook_id = ?7, source = ?8 WHERE id = ?9",
             params![
                 event.title,
                 event.description,
@@ -152,6 +180,8 @@ impl Database {
                 event.start_time.map(|t| t.format("%H:%M:%S").to_string()),
                 event.duration_minutes,
                 event.google_id,
+                event.outlook_id,
+                event.source,
                 id
             ],
         ).map_err(DbError::DatabaseError)?;
@@ -178,7 +208,7 @@ impl Database {
     
     pub async fn get_event(&self, id: i32) -> Result<Event, DbError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, title, description, date, created_at, start_time, duration_minutes, google_id FROM events WHERE id = ?1"
+            "SELECT id, title, description, date, created_at, start_time, duration_minutes, google_id, outlook_id, source FROM events WHERE id = ?1"
         ).map_err(DbError::DatabaseError)?;
         
         let event = stmt.query_row(params![id], |row| {
@@ -197,6 +227,8 @@ impl Database {
             
             let duration_minutes: Option<i32> = row.get(6)?;
             let google_id: Option<String> = row.get(7)?;
+            let outlook_id: Option<String> = row.get(8)?;
+            let source: Option<String> = row.get(9)?;
             
             Ok(Event {
                 id: Some(row.get(0)?),
@@ -207,6 +239,8 @@ impl Database {
                 duration_minutes,
                 created_at: Some(created_at),
                 google_id,
+                outlook_id,
+                source,
             })
         });
         
@@ -219,7 +253,7 @@ impl Database {
     
     pub async fn get_events_for_month(&self, year: i32, month: i32) -> Result<Vec<Event>, DbError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, title, description, date, created_at, start_time, duration_minutes, google_id FROM events 
+            "SELECT id, title, description, date, created_at, start_time, duration_minutes, google_id, outlook_id, source FROM events 
              WHERE strftime('%Y', date) = ?1 AND strftime('%m', date) = ?2"
         ).map_err(DbError::DatabaseError)?;
         
@@ -242,6 +276,8 @@ impl Database {
             
             let duration_minutes: Option<i32> = row.get(6)?;
             let google_id: Option<String> = row.get(7)?;
+            let outlook_id: Option<String> = row.get(8)?;
+            let source: Option<String> = row.get(9)?;
             
             Ok(Event {
                 id: Some(row.get(0)?),
@@ -252,6 +288,8 @@ impl Database {
                 duration_minutes,
                 created_at: Some(created_at),
                 google_id,
+                outlook_id,
+                source,
             })
         }).map_err(DbError::DatabaseError)?;
         
@@ -266,7 +304,7 @@ impl Database {
     // Find an event by Google ID
     pub async fn find_event_by_google_id(&self, google_id: &str) -> Result<Option<Event>, DbError> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, title, description, date, created_at, start_time, duration_minutes, google_id FROM events WHERE google_id = ?1"
+            "SELECT id, title, description, date, created_at, start_time, duration_minutes, google_id, outlook_id, source FROM events WHERE google_id = ?1"
         ).map_err(DbError::DatabaseError)?;
         
         let event_result = stmt.query_row(params![google_id], |row| {
@@ -285,6 +323,8 @@ impl Database {
             
             let duration_minutes: Option<i32> = row.get(6)?;
             let google_id: Option<String> = row.get(7)?;
+            let outlook_id: Option<String> = row.get(8)?;
+            let source: Option<String> = row.get(9)?;
             
             Ok(Event {
                 id: Some(row.get(0)?),
@@ -295,6 +335,8 @@ impl Database {
                 duration_minutes,
                 created_at: Some(created_at),
                 google_id,
+                outlook_id,
+                source,
             })
         });
         
@@ -305,6 +347,52 @@ impl Database {
         }
     }
     
+    // Find an event by Outlook ID
+    pub async fn find_event_by_outlook_id(&self, outlook_id: &str) -> Result<Option<Event>, DbError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, title, description, date, created_at, start_time, duration_minutes, google_id, outlook_id, source FROM events WHERE outlook_id = ?1"
+        ).map_err(DbError::DatabaseError)?;
+        
+        let event_result = stmt.query_row(params![outlook_id], |row| {
+            let date_str: String = row.get(3)?;
+            let created_at_str: String = row.get(4)?;
+            
+            let date = NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
+                .map_err(|_| rusqlite::Error::InvalidParameterName("Invalid date format".to_string()))?;
+            
+            let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .map_err(|_| rusqlite::Error::InvalidParameterName("Invalid datetime format".to_string()))?;
+            
+            let start_time_str: Option<String> = row.get(5)?;
+            let start_time = start_time_str.and_then(|s| NaiveTime::parse_from_str(&s, "%H:%M:%S").ok());
+            
+            let duration_minutes: Option<i32> = row.get(6)?;
+            let google_id: Option<String> = row.get(7)?;
+            let outlook_id: Option<String> = row.get(8)?;
+            let source: Option<String> = row.get(9)?;
+            
+            Ok(Event {
+                id: Some(row.get(0)?),
+                title: row.get(1)?,
+                description: row.get(2)?,
+                date,
+                start_time,
+                duration_minutes,
+                created_at: Some(created_at),
+                google_id,
+                outlook_id,
+                source,
+            })
+        });
+        
+        match event_result {
+            Ok(event) => Ok(Some(event)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(DbError::DatabaseError(e)),
+        }
+    }
+
     // Delete all events with Google IDs that are not in the provided list
     pub async fn delete_missing_google_events(&self, google_ids: &[String]) -> Result<usize, DbError> {
         let placeholders = google_ids.iter()
@@ -325,6 +413,41 @@ impl Database {
         };
         
         let rows_affected = self.conn.execute(&query, rusqlite::params_from_iter(params))
+            .map_err(DbError::DatabaseError)?;
+        
+        Ok(rows_affected)
+    }
+    
+    // Delete all events with Outlook IDs that are not in the provided list
+    pub async fn delete_missing_outlook_events(&self, outlook_ids: &[String]) -> Result<usize, DbError> {
+        let placeholders = outlook_ids.iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect::<Vec<_>>()
+            .join(",");
+        
+        let mut params: Vec<&dyn rusqlite::ToSql> = Vec::new();
+        for id in outlook_ids {
+            params.push(id);
+        }
+        
+        let query = if !outlook_ids.is_empty() {
+            format!("DELETE FROM events WHERE outlook_id IS NOT NULL AND outlook_id NOT IN ({})", placeholders)
+        } else {
+            "DELETE FROM events WHERE outlook_id IS NOT NULL".to_string()
+        };
+        
+        let rows_affected = self.conn.execute(&query, rusqlite::params_from_iter(params))
+            .map_err(DbError::DatabaseError)?;
+        
+        Ok(rows_affected)
+    }
+    
+    // Delete all events that were imported from Outlook Calendar
+    pub async fn delete_all_outlook_events(&self) -> Result<usize, DbError> {
+        let query = "DELETE FROM events WHERE outlook_id IS NOT NULL";
+        
+        let rows_affected = self.conn.execute(query, [])
             .map_err(DbError::DatabaseError)?;
         
         Ok(rows_affected)

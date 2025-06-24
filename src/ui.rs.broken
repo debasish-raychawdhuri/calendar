@@ -61,6 +61,11 @@ impl CalendarUI {
             google_client,
             outlook_client,
         }
+            events_cache: Vec::new(),
+            view_mode: ViewMode::Calendar,
+            selected_event_index: 0,
+            google_client,
+        }
     }
 
     pub async fn init(&mut self) -> Result<(), DbError> {
@@ -171,11 +176,7 @@ impl CalendarUI {
 
         // Print navigation help
         attron(A_BOLD());
-        mvprintw(
-            LINES() - 2,
-            2,
-            "Arrow keys: Navigate | Enter: Add | Tab: Events | G: Google | O: Outlook | q: Quit",
-        );
+        self.draw_help_text();
         attroff(A_BOLD());
 
         // Display events for selected day
@@ -896,7 +897,10 @@ impl CalendarUI {
         
         result
     }
-    
+        // Draw the help text at the bottom of the screen
+        mvprintw(max_y - 2, 0, "q: Quit | Enter: Add/Edit Event | Tab: Toggle View | g: Google Calendar | o: Outlook Calendar");
+        mvprintw(max_y - 1, 0, "Arrow keys: Navigate | PgUp/PgDn: Prev/Next Month | Home/End: First/Last Day");
+    }
     async fn handle_outlook_calendar(&mut self) -> Result<(), DbError> {
         // Create a clone of the necessary data to avoid borrow checker issues
         let outlook_client = &mut self.outlook_client;
@@ -919,4 +923,3 @@ impl CalendarUI {
         
         result
     }
-}

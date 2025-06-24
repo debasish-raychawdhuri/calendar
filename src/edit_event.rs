@@ -538,6 +538,8 @@ pub async fn show_event_dialog(
         duration_minutes,
         created_at,
         google_id: None, // Local events don't have a Google ID
+        outlook_id: None, // Local events don't have an Outlook ID
+        source: Some("manual".to_string()), // Local events are manually created
     };
     
     delwin(dialog);

@@ -3,8 +3,10 @@ mod db;
 mod ui;
 mod edit_event;
 mod google_calendar;
+mod outlook_calendar;
 mod oauth_server;
 mod ui_google;
+mod ui_outlook;
 
 use calendar::Calendar;
 use chrono::{Datelike, Local};
@@ -45,6 +47,10 @@ struct Args {
     #[arg(long = "google-auth", action = clap::ArgAction::SetTrue)]
     google_auth: bool,
     
+    /// Start Outlook Calendar authentication process
+    #[arg(long = "outlook-auth", action = clap::ArgAction::SetTrue)]
+    outlook_auth: bool,
+    
     /// Run database migrations
     #[arg(long = "migrate-db", action = clap::ArgAction::SetTrue)]
     migrate_db: bool,
@@ -52,6 +58,10 @@ struct Args {
     /// Clean all Google Calendar imported events from the database
     #[arg(long = "clean-google-events", action = clap::ArgAction::SetTrue)]
     clean_google_events: bool,
+    
+    /// Clean all Outlook Calendar imported events from the database
+    #[arg(long = "clean-outlook-events", action = clap::ArgAction::SetTrue)]
+    clean_outlook_events: bool,
 }
 
 /// Entry point of the calendar application
@@ -78,11 +88,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     
+    // Handle cleaning Outlook Calendar events if requested
+    if args.clean_outlook_events {
+        println!("Cleaning all Outlook Calendar imported events...");
+        let db = Arc::new(Mutex::new(db::Database::connect(args.db_path.as_deref()).await?));
+        let db_lock = db.lock().await;
+        let deleted = db_lock.delete_all_outlook_events().await?;
+        println!("Deleted {} events imported from Outlook Calendar", deleted);
+        return Ok(());
+    }
+    
     // Handle Google Calendar authentication if requested
     if args.google_auth {
         println!("Starting Google Calendar authentication process...");
         let db = Arc::new(Mutex::new(db::Database::connect(args.db_path.as_deref()).await?));
         return handle_google_auth(db).await;
+    }
+    
+    // Handle Outlook Calendar authentication if requested
+    if args.outlook_auth {
+        println!("Starting Outlook Calendar authentication process...");
+        let db = Arc::new(Mutex::new(db::Database::connect(args.db_path.as_deref()).await?));
+        return handle_outlook_auth(db).await;
     }
     
     if args.interactive {
@@ -259,6 +286,119 @@ async fn handle_google_auth(db: Arc<Mutex<db::Database>>) -> Result<(), Box<dyn 
         println!("Please set up credentials first by running the application in interactive mode.");
         println!("Run: cargo run -- -i");
         println!("Then press 'G' to set up Google Calendar integration.");
+    }
+    
+    Ok(())
+}
+
+/// Handle Outlook Calendar authentication in a non-interactive way
+async fn handle_outlook_auth(db: Arc<Mutex<db::Database>>) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::outlook_calendar::{OutlookCalendarClient, OutlookCredentials};
+    use tokio_util::sync::CancellationToken;
+    use std::sync::Arc as StdArc;
+    
+    println!("=== Outlook Calendar Authentication ===");
+    
+    // Check for existing credentials
+    if let Some(creds) = OutlookCredentials::load() {
+        println!("Found existing credentials.");
+        println!("Client ID: {}", creds.client_id);
+        println!("Client Secret: {}", if creds.client_secret.is_empty() { "Not set" } else { "[Set]" });
+        
+        // Create Outlook client
+        let mut client = OutlookCalendarClient::new(&creds.client_id, &creds.client_secret);
+        
+        if client.is_authenticated() {
+            println!("Already authenticated. Do you want to re-authenticate? (y/n)");
+            let mut input = String::new();
+            std::io::stdin().read_line(&mut input)?;
+            
+            if input.trim().to_lowercase() != "y" {
+                println!("Authentication skipped. You're already authenticated.");
+                return Ok(());
+            }
+        }
+        
+        println!("Starting authentication flow...");
+        
+        // Start the OAuth flow
+        let (auth_url, _csrf_token, pkce_verifier) = client.start_auth_flow();
+        
+        println!("Please open this URL in your browser:");
+        println!("{}", auth_url);
+        println!("\nWaiting for authentication response...");
+        
+        // Try to open the URL in the browser
+        if let Err(e) = webbrowser::open(auth_url.as_str()) {
+            println!("Failed to open URL automatically: {}", e);
+            println!("Please open the URL manually in your browser.");
+        }
+        
+        // Start a local server to handle the OAuth callback
+        let cancellation_token = CancellationToken::new();
+        let code_receiver = StdArc::new(tokio::sync::Mutex::new(None));
+        
+        // Spawn the server in a separate task
+        let server_token = cancellation_token.clone();
+        let server_code_receiver = StdArc::clone(&code_receiver);
+        
+        let server_handle = tokio::spawn(async move {
+            println!("Starting local server on http://localhost:8080");
+            crate::oauth_server::start_oauth_server(server_token, server_code_receiver).await
+        });
+        
+        // Wait for the code or timeout
+        let timeout = tokio::time::sleep(std::time::Duration::from_secs(300)); // 5 minutes
+        tokio::pin!(timeout);
+        
+        let mut auth_code = None;
+        
+        loop {
+            tokio::select! {
+                _ = &mut timeout => {
+                    println!("Authentication timed out after 5 minutes.");
+                    cancellation_token.cancel();
+                    break;
+                }
+                _ = tokio::time::sleep(std::time::Duration::from_secs(1)) => {
+                    let code_guard = code_receiver.lock().await;
+                    if let Some(code) = code_guard.as_ref() {
+                        println!("Received authorization code: {}", code);
+                        auth_code = Some(code.clone());
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Cancel the server and wait for it to finish
+        cancellation_token.cancel();
+        println!("Stopping local server...");
+        let _ = server_handle.await;
+        
+        // Complete the OAuth flow if we got a code
+        if let Some(code) = auth_code {
+            println!("Exchanging authorization code for access token...");
+            
+            match client.complete_auth_flow(&code, pkce_verifier).await {
+                Ok(_) => {
+                    println!("Authentication successful!");
+                    println!("You can now use Outlook Calendar integration in the application.");
+                },
+                Err(e) => {
+                    println!("Authentication failed: {}", e);
+                    return Err(e.into());
+                }
+            }
+        } else {
+            println!("No authorization code received. Authentication failed.");
+            return Err("Authentication failed: No authorization code received".into());
+        }
+    } else {
+        println!("No Outlook Calendar credentials found.");
+        println!("Please set up credentials first by running the application in interactive mode.");
+        println!("Run: cargo run -- -i");
+        println!("Then press 'O' to set up Outlook Calendar integration.");
     }
     
     Ok(())

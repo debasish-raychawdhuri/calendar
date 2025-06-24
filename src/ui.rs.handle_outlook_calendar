@@ -1,0 +1,55 @@
+    async fn handle_outlook_calendar(&mut self) -> Result<(), DbError> {
+        // Create a clone of the necessary data to avoid borrow checker issues
+        let outlook_client = &mut self.outlook_client;
+        let db = Arc::clone(&self.db);
+        let year = self.current_year;
+        let month = self.current_month;
+        
+        // Check if we have an Outlook client
+        if outlook_client.is_none() {
+            println!("No Outlook credentials found. Please run with --outlook-auth first.");
+            return Ok(());
+        }
+        
+        // Check if the client is authenticated
+        if !outlook_client.as_ref().unwrap().is_authenticated() {
+            println!("Not authenticated with Outlook Calendar. Please run with --outlook-auth first.");
+            return Ok(());
+        }
+        
+        // Get first and last day of current month
+        let cal = Calendar {
+            year: self.current_year,
+            month: self.current_month,
+        };
+        
+        let start_date = NaiveDate::from_ymd_opt(
+            cal.year as i32,
+            (cal.month + 1) as u32,
+            1,
+        ).unwrap();
+        
+        let end_date = NaiveDate::from_ymd_opt(
+            cal.year as i32,
+            (cal.month + 1) as u32,
+            cal.get_total_days_in_month(),
+        ).unwrap();
+        
+        // Import events
+        if let Some(client) = outlook_client {
+            println!("Importing events from {} to {}...", start_date, end_date);
+            
+            match client.import_events_to_db(&db, start_date, end_date).await {
+                Ok(count) => {
+                    println!("Successfully imported {} events", count);
+                    // Reload events
+                    self.load_events().await?;
+                },
+                Err(e) => {
+                    println!("Error: {}", e);
+                }
+            }
+        }
+        
+        Ok(())
+    }

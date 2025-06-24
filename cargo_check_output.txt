@@ -1,0 +1,117 @@
+warning: unused imports: `Local` and `TimeZone`
+ --> src/db.rs:1:24
+  |
+1 | use chrono::{DateTime, Local, NaiveDate, NaiveTime, TimeZone, Utc};
+  |                        ^^^^^                        ^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: unused import: `Result as SqliteResult`
+ --> src/db.rs:3:36
+  |
+3 | use rusqlite::{params, Connection, Result as SqliteResult};
+  |                                    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `DateTime` and `NaiveTime`
+ --> src/ui.rs:5:14
+  |
+5 | use chrono::{DateTime, Datelike, Local, NaiveDate, NaiveTime, TimeZone, Utc};
+  |              ^^^^^^^^                              ^^^^^^^^^
+
+warning: unused import: `DbError`
+ --> src/google_calendar.rs:1:27
+  |
+1 | use crate::db::{Database, DbError, Event};
+  |                           ^^^^^^^
+
+warning: unused import: `DbError`
+ --> src/outlook_calendar.rs:6:27
+  |
+6 | use crate::db::{Database, DbError, Event};
+  |                           ^^^^^^^
+
+warning: unused imports: `DateTime`, `NaiveTime`, and `Timelike`
+ --> src/outlook_calendar.rs:7:14
+  |
+7 | use chrono::{DateTime, NaiveDate, NaiveTime, Timelike, Utc};
+  |              ^^^^^^^^             ^^^^^^^^^  ^^^^^^^^
+
+warning: unused import: `self`
+  --> src/outlook_calendar.rs:14:15
+   |
+14 | use std::fs::{self, File};
+   |               ^^^^
+
+warning: unused import: `std::path::PathBuf`
+  --> src/outlook_calendar.rs:16:5
+   |
+16 | use std::path::PathBuf;
+   |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused variable: `db`
+   --> src/main.rs:188:29
+    |
+188 | async fn handle_google_auth(db: Arc<Mutex<db::Database>>) -> Result<(), Box<dyn std::error::Error>> {
+    |                             ^^ help: if this is intentional, prefix it with an underscore: `_db`
+    |
+    = note: `#[warn(unused_variables)]` on by default
+
+warning: unused variable: `db`
+   --> src/main.rs:295:30
+    |
+295 | async fn handle_outlook_auth(db: Arc<Mutex<db::Database>>) -> Result<(), Box<dyn std::error::Error>> {
+    |                              ^^ help: if this is intentional, prefix it with an underscore: `_db`
+
+warning: variable `current_pos` is assigned to, but never used
+   --> src/edit_event.rs:421:29
+    |
+421 |                     let mut current_pos = 0;
+    |                             ^^^^^^^^^^^
+    |
+    = note: consider using `_current_pos` instead
+
+warning: unused variable: `id`
+   --> src/edit_event.rs:551:17
+    |
+551 |     if let Some(id) = event_id {
+    |                 ^^ help: if this is intentional, prefix it with an underscore: `_id`
+
+warning: variable `char_count` is assigned to, but never used
+   --> src/edit_event.rs:152:17
+    |
+152 |         let mut char_count = 0;
+    |                 ^^^^^^^^^^
+    |
+    = note: consider using `_char_count` instead
+
+warning: unused import: `Datelike`
+ --> src/ui.rs:5:24
+  |
+5 | use chrono::{DateTime, Datelike, Local, NaiveDate, NaiveTime, TimeZone, Utc};
+  |                        ^^^^^^^^
+
+warning: unused variable: `is_current_month`
+   --> src/ui.rs:187:65
+    |
+187 |     fn draw_month_calendar(&self, cal: &Calendar, start_x: i32, is_current_month: bool, is_selected_month: bool) {
+    |                                                                 ^^^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_is_current_month`
+
+warning: associated function `print_one_month` is never used
+   --> src/calendar.rs:449:12
+    |
+61  | impl Calendar {
+    | ------------- associated function in this implementation
+...
+449 |     pub fn print_one_month(cal: Calendar) {
+    |            ^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` on by default
+
+warning: function `handle_oauth_callback` is never used
+   --> src/google_calendar.rs:499:14
+    |
+499 | pub async fn handle_oauth_callback(
+    |              ^^^^^^^^^^^^^^^^^^^^^
+
+warning: `calendar` (bin "calendar") generated 17 warnings (run `cargo fix --bin "calendar"` to apply 8 suggestions)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.09s

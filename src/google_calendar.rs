@@ -382,6 +382,8 @@ impl GoogleCalendarClient {
                 duration_minutes,
                 created_at: None,
                 google_id: event.get("id").and_then(|s| s.as_str()).map(|s| s.to_string()), // Store Google's event ID
+                outlook_id: None, // Google events don't have an Outlook ID
+                source: Some("google".to_string()), // Mark as Google event
             };
 
             result.push(calendar_event);
