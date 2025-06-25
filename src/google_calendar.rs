@@ -496,6 +496,7 @@ impl GoogleCredentials {
 }
 
 // Function to handle the OAuth callback
+#[allow(dead_code)]
 pub async fn handle_oauth_callback(
     code: &str,
     client: &mut GoogleCalendarClient,

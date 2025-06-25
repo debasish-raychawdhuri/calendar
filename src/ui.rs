@@ -2,7 +2,7 @@ use crate::calendar::{Calendar, DayOfWeek};
 use crate::db::{Database, DbError, Event};
 use crate::google_calendar::{GoogleCalendarClient, GoogleCredentials};
 use crate::outlook_calendar::{OutlookCalendarClient, OutlookCredentials};
-use chrono::{Datelike, Local, NaiveDate, TimeZone, Utc};
+use chrono::{Local, NaiveDate, TimeZone, Utc};
 use ncurses::*;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -184,7 +184,7 @@ impl CalendarUI {
         refresh();
     }
     
-    fn draw_month_calendar(&self, cal: &Calendar, start_x: i32, is_current_month: bool, is_selected_month: bool) {
+    fn draw_month_calendar(&self, cal: &Calendar, start_x: i32, _is_current_month: bool, is_selected_month: bool) {
         let today = Calendar::get_today();
         let is_today_month = cal.year == today.2 && cal.month == today.1;
         

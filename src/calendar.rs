@@ -446,6 +446,7 @@ impl Calendar {
     }
 
     /// Prints just a single month calendar
+    #[allow(dead_code)]
     pub fn print_one_month(cal: Calendar) {
         Self::print_year_heading(cal.year);
 

@@ -149,7 +149,7 @@ pub async fn show_event_dialog(
         
         let mut line_idx = 0;
         let mut col_idx = 0;
-        let mut char_count = 0;
+        let mut __char_count = 0;
         
         for (i, c) in text.chars().enumerate() {
             if i == cursor_pos {
@@ -548,7 +548,7 @@ pub async fn show_event_dialog(
     // Save the event to the database
     let db_lock = db.lock().await;
     
-    if let Some(id) = event_id {
+    if let Some(_id) = event_id {
         // Update existing event
         db_lock.update_event(&event).await?;
         Ok(Some(event))
