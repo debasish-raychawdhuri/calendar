@@ -1,4 +1,5 @@
 mod calendar;
+mod interactive;
 use calendar::Calendar;
 use chrono::{Datelike, Local};
 use clap::Parser;
@@ -23,31 +24,35 @@ struct Args {
     /// Show only one month instead of the default three
     #[arg(short = 's', long = "single-month")]
     single_month: bool,
+
+    /// Interactive mode with arrow key navigation
+    #[arg(short = 'i', long = "interactive")]
+    interactive: bool,
 }
 
 /// Entry point of the calendar application
-/// 
+///
 /// # Description
 /// Parses command line arguments and displays calendar(s) based on the provided options:
 /// - Can show an entire year
 /// - Can show a single month
 /// - Can show three consecutive months (default)
 /// - Supports years from 1583 onwards
-/// 
+///
 /// # Arguments
 /// Command line arguments are parsed using the `Args` struct
-/// 
+///
 /// # Examples
 /// ```bash
 /// # Show current month and adjacent months
 /// calendar
-/// 
+///
 /// # Show entire year
 /// calendar -y 2024
-/// 
+///
 /// # Show specific month
 /// calendar 2024 12
-/// 
+///
 /// # Show single month instead of three
 /// calendar -s
 /// ```
@@ -82,7 +87,14 @@ fn main() {
         std::process::exit(1);
     }
 
-    if args.show_year || (has_first_arg && args.second_arg.is_none() && year != date.year() as u16)
+    if args.interactive {
+        let mut app = interactive::InteractiveCalendar::new();
+        if let Err(e) = app.run() {
+            eprintln!("Error: {}", e);
+            std::process::exit(1);
+        }
+    } else if args.show_year
+        || (has_first_arg && args.second_arg.is_none() && year != date.year() as u16)
     {
         Calendar::print_entire_year(year);
     } else if let Some(month) = month {

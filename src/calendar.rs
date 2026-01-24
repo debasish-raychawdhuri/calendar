@@ -4,8 +4,8 @@ use std::{fmt::Display, print, str::FromStr};
 
 /// Represents a calendar for a specific year and month
 pub struct Calendar {
-    pub month: u8,  // Month (0-based, 0-11)
-    pub year: u16,  // Year (1583 or later)
+    pub month: u8, // Month (0-based, 0-11)
+    pub year: u16, // Year (1583 or later)
 }
 
 /// Represents days of the week
@@ -22,10 +22,10 @@ pub enum DayOfWeek {
 
 impl DayOfWeek {
     /// Converts a day number to its corresponding day of the week
-    /// 
+    ///
     /// # Arguments
     /// * `day` - The day number (any integer)
-    /// 
+    ///
     /// # Returns
     /// * The corresponding `DayOfWeek`
     fn from_day_number(day: u32) -> Self {
@@ -75,7 +75,7 @@ impl Calendar {
 
     /// Calculates the first day of the year relative to year 0
     /// This is used as a base for calculating specific dates
-    /// 
+    ///
     /// # Returns
     /// * The number of days from year 0 to the start of the current year
     pub fn get_year_base_day(&self) -> u32 {
@@ -127,10 +127,10 @@ impl Calendar {
     }
 
     /// Helper function to add padding spaces based on number width
-    /// 
+    ///
     /// # Arguments
     /// * `v` - The number to pad
-    /// 
+    ///
     /// # Returns
     /// * A string containing the appropriate number of spaces
     fn pad(v: u32) -> String {
@@ -144,10 +144,10 @@ impl Calendar {
     }
 
     /// Creates a string with a specified number of spaces
-    /// 
+    ///
     /// # Arguments
     /// * `n` - The number of spaces to create
-    /// 
+    ///
     /// # Returns
     /// * A string containing n spaces
     fn spaces(n: usize) -> String {
@@ -165,7 +165,7 @@ impl Calendar {
     ///
     /// # Returns
     /// * The starting day of the line as an `i32`.
-    fn calculate_line_start(&self, line_no: u32) -> i32 {
+    pub fn calculate_line_start(&self, line_no: u32) -> i32 {
         let month_base = (self.get_month_base_day() % 7) as i32;
         let mut line_no = line_no;
         if month_base == 6 {
@@ -228,7 +228,7 @@ impl Calendar {
     ///
     /// # Returns
     /// * The total number of days in the month as a `u32`.
-    fn get_total_days_in_month(&self) -> u32 {
+    pub fn get_total_days_in_month(&self) -> u32 {
         let month_days: [u32; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
         let mut total_days = month_days[self.month as usize];
         if self.is_leap_year() && self.month == 1 {
@@ -238,7 +238,7 @@ impl Calendar {
     }
 
     /// Prints a calendar row starting from the given line number
-    /// 
+    ///
     /// # Arguments
     /// * `line_no` - The row number (0-5) to print
     fn print_line(&self, line_no: u32) {
